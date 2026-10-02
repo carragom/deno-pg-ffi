@@ -1,0 +1,14 @@
+name: Install Deno
+description: Install the pinned Deno version with the official shell installer
+runs:
+  using: composite
+  steps:
+    - name: Install Deno
+      shell: bash
+      run: |
+        set -euo pipefail
+        deno_version=2.9.7
+        export DENO_INSTALL="$RUNNER_TEMP/deno"
+        curl -fsSL https://deno.land/install.sh | sh -s -- "v$deno_version" --no-modify-path
+        "$DENO_INSTALL/bin/deno" --version
+        echo "$DENO_INSTALL/bin" >> "$GITHUB_PATH"

@@ -16,11 +16,10 @@ export interface SemVersion {
  */
 export async function getGlibcVersion(): Promise<SemVersion | null> {
 	try {
-		const p = await new Deno.Command('getconf', {
-			args: ['GNU_LIBC_VERSION'],
+		const p = await Deno.spawnAndWait('getconf', ['GNU_LIBC_VERSION'], {
 			stdout: 'piped',
 			stderr: 'null',
-		}).output()
+		})
 
 		if (!p.success) return null
 
@@ -41,11 +40,10 @@ export async function getGlibcVersion(): Promise<SemVersion | null> {
 
 export async function getOpenSSLVersion(): Promise<string | null> {
 	try {
-		const p = await new Deno.Command('openssl', {
-			args: ['version'],
+		const p = await Deno.spawnAndWait('openssl', ['version'], {
 			stdout: 'piped',
 			stderr: 'null',
-		}).output()
+		})
 
 		if (!p.success) return null
 

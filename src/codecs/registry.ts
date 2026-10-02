@@ -1,8 +1,8 @@
 /**
- * OID maps for receiving values over the text protocol.
+ * Result converters for PostgreSQL type OIDs over the text protocol.
  *
- * Built-in maps are module-level and never mutated. Each {@linkcode TypeRegistry}
- * holds an override layer on top of those defaults.
+ * Built-in converters are module-level and never mutated. Each
+ * {@linkcode TypeRegistry} holds an override layer on top of those defaults.
  *
  * @module
  */
@@ -15,7 +15,8 @@ import {
 import { unescapeBytea } from '../native/wrappers.ts'
 
 /**
- * Convert one non-NULL PostgreSQL text value to a JavaScript value.
+ * A result converter for one non-NULL PostgreSQL text value.
+ * Converts server text to the JavaScript value exposed in a row.
  * Passed to Client.registerScalar or Pool.registerScalar. Matching array leaves
  * use the same function; SQL NULL remains null without calling it.
  * @param text Server text for the registered scalar type.
@@ -164,7 +165,7 @@ function deserializeInstant(text: string): Temporal.Instant {
 
 const identity = (text: string): string => text
 
-/** Built-in scalar OID → deserializer. Never mutated. */
+/** Built-in scalar OID → result converter. Never mutated. */
 const BUILTIN_SCALARS: ReadonlyMap<number, Deserialize> = new Map([
 	[OID_BOOL, deserializeBoolean],
 	[OID_BYTEA, deserializeBytea],
@@ -286,13 +287,13 @@ const BUILTIN_ARRAYS: ReadonlyMap<number, ArrayType> = new Map([
 /**
  * Per-client or per-pool OID maps for receiving values.
  *
- * Built-in maps are shared and never mutated. Overrides live on this object.
+ * Built-in converters are shared and never mutated. Overrides live on this object.
  */
 export class TypeRegistry {
 	#scalars = new Map<number, Deserialize>()
 	#arrays = new Map<number, ArrayType>()
 
-	/** @internal Seed this registry with independently enabled Temporal codecs. */
+	/** @internal Seed this registry with independently enabled Temporal converters. */
 	constructor(temporalTime = false, temporalInterval = false) {
 		if (temporalTime) {
 			this.registerScalar(OID_TIME, deserializePlainTime)
@@ -305,10 +306,10 @@ export class TypeRegistry {
 	}
 
 	/**
-	 * Register a scalar deserializer for `oid`.
+	 * Register a scalar result converter for `oid`.
 	 *
 	 * Replaces a previous override for the same OID. Does not change the
-	 * built-in maps.
+	 * built-in converters.
 	 *
 	 * @param {number} oid - Type OID from `PQftype`
 	 * @param {Deserialize} deserialize - Converts field text
@@ -327,18 +328,18 @@ export class TypeRegistry {
 	 * Register `arrayOid` as a Postgres array type.
 	 *
 	 * When `elementOid` is omitted, each leaf stays the element text. When
-	 * given, every leaf uses that scalar deserializer. Replaces a previous
+	 * given, every leaf uses that scalar result converter. Replaces a previous
 	 * override for the same array OID.
 	 *
 	 * @param {number} arrayOid - Array type OID from `PQftype`
 	 * @param {number} [elementOid] - Scalar element OID. Must already have a
-	 * deserializer
+	 * result converter
 	 * @param {string} [delimiter] - Element delimiter. Defaults to the built-in
 	 * delimiter (semicolon for `box[]`), or comma for custom array OIDs.
 	 * Must be one non-whitespace ASCII character other than braces, quotes,
 	 * or backslash. A custom array can use `registerArray(oid, undefined, ';')`.
 	 * @throws {TypeError} When `arrayOid` is already a scalar OID,
-	 * `elementOid` has no deserializer, or `delimiter` is invalid
+	 * `elementOid` has no result converter, or `delimiter` is invalid
 	 */
 	registerArray(
 		arrayOid: number,

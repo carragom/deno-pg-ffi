@@ -4,13 +4,19 @@
  * A managed PostgreSQL client with explicit resource ownership and libpq's
  * native transport. Use {@linkcode Client} for one connection, {@linkcode Pool}
  * for concurrent commands, and {@linkcode Notifier} for LISTEN/NOTIFY. Prepared
- * statements, transactions through SQL, and custom text decoders are supported.
+ * statements, transactions through SQL, and custom result converters are
+ * supported.
  * Connections and commands use libpq's nonblocking poll protocol.
+ *
+ * Install the alpha with `deno add jsr:@carragom/deno-pg-ffi@0.1.0-alpha.1`,
+ * then import the managed API from `@carragom/deno-pg-ffi`. Running an example
+ * with automatic library loading requires
+ * `deno run --allow-ffi --allow-env --allow-net --allow-read --allow-write example.ts`.
  *
  * Dispose connections, checkouts, statements, and results with `await using`
  * or their `close` methods. {@linkcode Result} owns its data independently of
  * the connection. Commands collect the full native result before returning;
- * {@linkcode Rows} decodes and caches each row when first read.
+ * {@linkcode Rows} converts and caches each row when first read.
  *
  * ## Connections and library loading
  *
@@ -18,7 +24,9 @@
  * import time, including when only a lazy pool is created. `DENO_LIBPQ_PATH`
  * selects a local library and takes precedence over `DENO_LIBPQ_URL`, which
  * overrides the download base URL. With neither set, the loader downloads
- * from the GitHub release matching the package version. Older libraries fail
+ * the selected binary from this package's `prebuilds/` directory on JSR and
+ * caches it locally. A source checkout without `prebuilds/` downloads from
+ * the matching GitHub release. Older libraries fail
  * during import because required poll symbols are missing.
  *
  * Local loading requires `--allow-ffi` and environment access for loader
@@ -41,12 +49,17 @@
  * variables and defaults. See {@linkcode Client.connect} for precedence and
  * connection timeouts.
  *
- * ## Text conversion
+ * ## Value converters
+ *
+ * Parameter converters turn JavaScript values into PostgreSQL text. Result
+ * converters turn PostgreSQL text into JavaScript values. SQL NULL stays null
+ * in both directions.
  *
  * {@linkcode Param} describes accepted parameter values. JavaScript types select
  * parameter text; PostgreSQL infers the SQL type, or an explicit cast selects
  * it. No parameter type OIDs are sent. Any SQL type can receive a plain string
- * if PostgreSQL accepts that text. Receive conversion uses column type OIDs:
+ * if PostgreSQL accepts that text. Result converters are selected by column
+ * type OIDs:
  *
  * | PostgreSQL type | Parameter value | Received value |
  * | --- | --- | --- |
@@ -64,7 +77,7 @@
  * | time | `Temporal.PlainTime` | `string`, or opt-in `Temporal.PlainTime` |
  * | interval | `Temporal.Duration` | `string`, or opt-in `Temporal.Duration` |
  * | timetz | `string` | `string` |
- * | Built-in array | {@linkcode array} | Nested arrays of mapped values or strings |
+ * | Built-in array | {@linkcode array} | Nested arrays of converted values or strings |
  * | Unregistered custom array | Array text | `string` |
  *
  * Built-in arrays preserve nesting and SQL NULL leaves; lower bounds are
@@ -73,19 +86,19 @@
  * delimiter require manually formatted parameters.
  *
  * {@linkcode ClientOptions} independently enables strict time and interval
- * decoding, including arrays. Unsupported values throw during row access.
+ * conversion, including arrays. Unsupported values throw during row access.
  * Date/timestamp infinity and BC text are also unsupported by the default
  * Temporal parsers. Use text casts or {@linkcode Client.registerScalar} /
- * {@linkcode Pool.registerScalar} to handle them. Custom array mapping uses
+ * {@linkcode Pool.registerScalar} to handle them. Custom array conversion uses
  * {@linkcode Client.registerArray} / {@linkcode Pool.registerArray}.
  *
  * ## Errors and advanced access
  *
  * SQL errors reject commands with {@linkcode PostgresError}; its diagnostics
  * are copied and the native error result is cleared. Connection/transport/state
- * failures use ordinary Errors. Invalid parameters throw TypeError. Decoders,
- * including custom callbacks, can throw when a row is first read; dispose the
- * result even when decoding fails.
+ * failures use ordinary Errors. Invalid parameters throw TypeError. Result
+ * converters, including custom callbacks, can throw when a row is first read;
+ * dispose the result even when conversion fails.
  *
  * Managed commands do not offer streaming COPY, pipeline mode, binary results,
  * a statement cache, or command cancellation. For direct access to the exposed
@@ -96,7 +109,7 @@
  *
  * @example
  * ```ts
- * import { Client } from './mod.ts'
+ * import { Client } from '@carragom/deno-pg-ffi'
  *
  * await using db = await Client.connect()
  * await using r = await db.query<{ n: number }>(

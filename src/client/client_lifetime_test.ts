@@ -185,13 +185,16 @@ Deno.test('missing-table query then a successful query on the same client', asyn
 })
 
 Deno.test('pg_terminate_backend during sleep then close is safe', async () => {
-	const victim = await Client.connect()
+	await using victim = await Client.connect()
 	await using killer = await Client.connect()
 	await using pidResult = await victim.query<{ pid: number }>(
 		'SELECT pg_backend_pid()::int4 AS pid',
 	)
 	const pid = pidResult.rows[0].pid
 	const pending = victim.query('SELECT pg_sleep(5)')
+	// Termination may reject before the killer command resolves. Attach a
+	// handler now; assertRejects below still checks the original promise.
+	void pending.catch(() => {})
 	await using _term = await killer.query(
 		'SELECT pg_terminate_backend($1::int4)',
 		[pid],

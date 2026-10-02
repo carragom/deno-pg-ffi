@@ -367,7 +367,7 @@ export interface Libpq {
 	) => number
 	/**
 	 * Return the PostgreSQL type OID for a zero-based result column. No
-	 * deserialization is performed.
+	 * result conversion is performed.
 	 *
 	 * @see {@link https://www.postgresql.org/docs/17/libpq-exec.html#LIBPQ-PQFTYPE | PQftype}
 	 */

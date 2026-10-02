@@ -232,11 +232,11 @@ export class Pool implements AsyncDisposable {
 	}
 
 	/**
-	 * Register a scalar deserializer for `oid` on every connection this pool
+	 * Register a scalar result converter for `oid` on every connection this pool
 	 * opens, including checkouts already in progress.
-	 * SQL NULL bypasses the decoder. Changes affect rows when first materialized;
+	 * SQL NULL bypasses the converter. Changes affect rows when first materialized;
 	 * cached rows keep their values. See {@linkcode Client.registerScalar} for
-	 * scalar/array pairing and a custom decoder example. PoolClient has no
+	 * scalar/array pairing and a custom result converter example. PoolClient has no
 	 * registration methods; register on the pool before reading results.
 	 *
 	 * @param oid Type OID from `PQftype`
@@ -255,13 +255,13 @@ export class Pool implements AsyncDisposable {
 	 *
 	 * @param arrayOid Array type OID from `PQftype`
 	 * @param elementOid Scalar element OID that already has a
-	 * deserializer
+	 * result converter
 	 * @param delimiter Element delimiter. Defaults to the built-in
 	 * delimiter (semicolon for `box[]`), or comma for custom array OIDs.
 	 * Must be one non-whitespace ASCII character other than braces, quotes,
 	 * or backslash. A custom array can use `registerArray(oid, undefined, ';')`.
 	 * @throws {TypeError} When `arrayOid` is already a scalar OID,
-	 * `elementOid` has no deserializer, or `delimiter` is invalid
+	 * `elementOid` has no result converter, or `delimiter` is invalid
 	 */
 	registerArray(
 		arrayOid: number,

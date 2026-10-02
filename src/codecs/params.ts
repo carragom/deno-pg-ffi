@@ -1,5 +1,5 @@
 /**
- * Parameter text for `json`, `jsonb`, and Postgres arrays.
+ * Parameter converters for JavaScript values, JSON, and Postgres arrays.
  *
  * These helpers return strings for a `params` list. The SQL cast selects
  * the type. No parameter OID is sent.
@@ -17,7 +17,7 @@ import { quoteArrayElement } from './array_text.ts'
  * SQL type when PostgreSQL accepts their text. Casts such as `$1::int4` select
  * the type; parameter OIDs are not sent.
  *
- * Numbers must be finite. Serialized text cannot contain NUL (`\0`), while
+ * Numbers must be finite. Converted text cannot contain NUL (`\0`), while
  * bytea Uint8Array values can contain zero bytes. A bare `null` means SQL NULL.
  * Convert Date with `.toTemporalInstant()` and Temporal.ZonedDateTime with
  * `.toInstant()` before sending; neither is accepted directly.
@@ -95,7 +95,7 @@ export function serializeInstant(value: unknown): string {
 	return value.toString()
 }
 
-/** @internal Serialize a clock time without rounding it in JavaScript. */
+/** @internal Convert a clock time to text without rounding it in JavaScript. */
 export function serializePlainTime(value: unknown): string {
 	if (!(value instanceof Temporal.PlainTime)) {
 		throw new TypeError('Expected a Temporal.PlainTime')
@@ -103,7 +103,7 @@ export function serializePlainTime(value: unknown): string {
 	return value.toString()
 }
 
-/** @internal Serialize a duration using PostgreSQL's signed ISO components. */
+/** @internal Convert a duration to PostgreSQL's signed ISO component text. */
 export function serializeDuration(value: unknown): string {
 	if (!(value instanceof Temporal.Duration)) {
 		throw new TypeError('Expected a Temporal.Duration')

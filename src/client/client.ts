@@ -37,10 +37,11 @@ const INTERVAL_STYLE_SQL = 'SET IntervalStyle = iso_8601'
 /**
  * Driver options for {@linkcode Client.connect} and {@linkcode Pool.create}.
  * Both flags default to false and are captured when the factory is invoked;
- * later mutations of the options object do not change decoding. They independently
- * enable strict scalar and array-leaf codecs. SQL NULL stays null.
- * Codec RangeErrors identify the type and text and retain the underlying cause;
- * there is no string fallback. A command can succeed before reading a row fails.
+ * later mutations of the options object do not change conversion. They
+ * independently enable strict scalar and array-leaf converters. SQL NULL stays
+ * null. Conversion RangeErrors identify the type and text and retain the
+ * underlying cause; there is no string fallback. A command can succeed before
+ * reading a row fails.
  *
  * Custom scalar overrides take precedence. With a flag enabled, its array is
  * already paired with the scalar. Otherwise register the scalar and explicitly
@@ -167,7 +168,7 @@ export class Client implements PreparedClient {
 	 * if (result.rows[0].t.hour !== 12 || result.rows[0].i.days !== -1) {
 	 * 	throw new Error('expected Temporal values')
 	 * }
-	 * // Unsupported values throw when a row is read. A text cast bypasses the codec.
+	 * // Unsupported values throw when a row is read. A text cast bypasses the converter.
 	 * await using text = await db.query<{ closing: string }>(
 	 * 	"SELECT time '24:00:00'::text AS closing",
 	 * )
@@ -205,17 +206,18 @@ export class Client implements PreparedClient {
 	}
 
 	/**
-	 * Register a scalar deserializer for `oid`.
+	 * Register a scalar result converter for `oid`.
 	 *
 	 * Applies to columns with that OID and to array leaves when an array OID
-	 * points at this scalar. Does not change built-in maps. A second call for
+	 * points at this scalar. Does not change built-in converters. A second call for
 	 * the same OID replaces the override.
 	 *
-	 * Decoders run when a row is first materialized: unread rows use the latest
-	 * mapping, while cached rows keep their values. SQL NULL bypasses the decoder.
-	 * Register before reading results for consistent values. Built-in arrays with
-	 * unmapped elements, such as `uuid[]`, require an explicit
-	 * {@linkcode registerArray} pairing before a scalar override applies to leaves.
+	 * Result converters run when a row is first materialized: unread rows use the
+	 * latest converter, while cached rows keep their values. SQL NULL bypasses
+	 * the converter. Register before reading results for consistent values.
+	 * Arrays without a built-in scalar converter for their elements, such as
+	 * `uuid[]`, require an explicit {@linkcode registerArray} pairing before a
+	 * scalar override applies to leaves.
 	 *
 	 * @param oid Type OID from `PQftype`
 	 * @param deserialize Converts field text
@@ -243,20 +245,20 @@ export class Client implements PreparedClient {
 	 * Register `arrayOid` as a Postgres array type.
 	 *
 	 * When `elementOid` is omitted, each leaf stays the element text. When
-	 * given, every leaf uses that scalar deserializer. A second call for the
+	 * given, every leaf uses that scalar result converter. A second call for the
 	 * same array OID replaces the override.
 	 * Preserves nesting and SQL NULL leaves, but discards PostgreSQL lower bounds.
 	 * Like {@linkcode registerScalar}, changes affect unread rows, not cached rows.
 	 *
 	 * @param arrayOid Array type OID from `PQftype`
 	 * @param elementOid Scalar element OID that already has a
-	 * deserializer
+	 * result converter
 	 * @param delimiter Element delimiter. Defaults to the built-in
 	 * delimiter (semicolon for `box[]`), or comma for custom array OIDs.
 	 * Must be one non-whitespace ASCII character other than braces, quotes,
 	 * or backslash. A custom array can use `registerArray(oid, undefined, ';')`.
 	 * @throws {TypeError} When `arrayOid` is already a scalar OID,
-	 * `elementOid` has no deserializer, or `delimiter` is invalid
+	 * `elementOid` has no result converter, or `delimiter` is invalid
 	 *
 	 * @example
 	 * ```ts
@@ -293,7 +295,7 @@ export class Client implements PreparedClient {
 	 * @throws {Error} When the client is closed, busy, or the SQL has more than
 	 * one statement
 	 * @throws {TypeError} When a parameter is unsupported, non-finite, or contains
-	 * embedded NUL after serialization
+	 * embedded NUL after conversion
 	 *
 	 * @example
 	 * ```ts

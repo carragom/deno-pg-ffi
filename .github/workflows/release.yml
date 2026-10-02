@@ -30,7 +30,7 @@ jobs:
           test "$RELEASE_REF_TYPE" = tag
           release_version="$(jq -er .version deno.json)"
           test "$RELEASE_TAG" = "v$release_version"
-          test -s CHANGELOG.md
+          test -s THIRD_PARTY_LICENSES.txt
 
   build-and-test:
     name: Build and Test ${{ matrix.output }}
@@ -83,7 +83,7 @@ jobs:
     needs:
       - build-and-test
     steps:
-      - name: Checkout release notes
+      - name: Checkout release metadata
         uses: actions/checkout@v6
 
       - name: Download artifacts
@@ -93,15 +93,17 @@ jobs:
           merge-multiple: true
           path: release-assets
 
-      - name: Verify all binaries and bundled OpenSSL licenses
+      - name: Include shared third-party licenses
+        run: cp THIRD_PARTY_LICENSES.txt release-assets/THIRD_PARTY_LICENSES.txt
+
+      - name: Verify all binaries and shared licenses
         run: |
           set -euo pipefail
           for filename in \
             libpq-openssl11_x86_64.so libpq-openssl11_aarch64.so \
             libpq-openssl3_x86_64.so libpq-openssl3_aarch64.so \
             libpq_aarch64.dylib libpq_x86_64.dylib \
-            libpq_aarch64.dylib.OPENSSL-LICENSE.txt \
-            libpq_x86_64.dylib.OPENSSL-LICENSE.txt; do
+            THIRD_PARTY_LICENSES.txt; do
             test -s "release-assets/$filename"
           done
 
@@ -112,7 +114,10 @@ jobs:
           name: ${{ github.ref_name }}
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
-          body_path: CHANGELOG.md
+          body: >-
+            Third-party license notices:
+            [THIRD_PARTY_LICENSES.txt](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/THIRD_PARTY_LICENSES.txt).
+          generate_release_notes: true
           fail_on_unmatched_files: true
           files: |
             release-assets/*

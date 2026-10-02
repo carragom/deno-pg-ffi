@@ -9,8 +9,7 @@ const libCustomPath = Deno.env.get(DENO_LIBPQ_PATH)
 let lib: Deno.DynamicLibrary<Deno.ForeignLibraryInterface>
 
 if (libCustomPath === undefined) {
-	const base = Deno.env.get(DENO_LIBPQ_URL) ??
-		`${meta.github}/releases/download/v${meta.version}/`
+	const base = Deno.env.get(DENO_LIBPQ_URL) ?? await defaultLibraryBase()
 	const filenames = releaseArtifactFilenames(Deno.build.os, Deno.build.arch)
 	const failures: unknown[] = []
 	let loaded: typeof lib | undefined
@@ -42,3 +41,19 @@ if (libCustomPath === undefined) {
 }
 
 export const ffi = lib.symbols as unknown as Libpq
+
+async function defaultLibraryBase(): Promise<string> {
+	const prebuilds = new URL('../../prebuilds/', import.meta.url)
+	if (prebuilds.protocol !== 'file:') return prebuilds.href
+	try {
+		if (!(await Deno.stat(prebuilds)).isDirectory) {
+			throw new Error('The package prebuilds path must be a directory.')
+		}
+		return prebuilds.href
+	} catch (error) {
+		// Checkouts have no packaged binaries. Missing packaged candidates still
+		// fail rather than silently switching a prepared package to GitHub.
+		if (!(error instanceof Deno.errors.NotFound)) throw error
+		return `${meta.github}/releases/download/v${meta.version}/`
+	}
+}

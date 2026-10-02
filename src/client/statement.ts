@@ -66,7 +66,7 @@ export class Statement implements AsyncDisposable {
 	 * @throws {PostgresError} When execution fails
 	 * @throws {Error} When this statement or its owner is closed, the owner is
 	 * busy, or transport fails
-	 * @throws {TypeError} When parameter serialization fails
+	 * @throws {TypeError} When parameter conversion fails
 	 */
 	execute<T = Record<string, unknown>>(
 		params?: Param[],

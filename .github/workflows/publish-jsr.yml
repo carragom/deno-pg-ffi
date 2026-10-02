@@ -1,0 +1,235 @@
+name: Publish JSR
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: GitHub release tag to validate or publish
+        required: true
+        default: v0.1.0-alpha.1
+        type: string
+      publish:
+        description: Publish to JSR after validation (irreversible)
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-jsr-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Prepare and validate package
+    runs-on: ubuntu-24.04
+    outputs:
+      commit: ${{ steps.metadata.outputs.commit }}
+      version: ${{ steps.metadata.outputs.version }}
+    services:
+      postgres:
+        image: postgres:17-trixie
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.tag }}
+      - name: Install Deno
+        uses: ./.github/actions/setup-deno
+      - name: Validate release identity
+        id: metadata
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          test "$(jq -r .name deno.json)" = '@carragom/deno-pg-ffi'
+          version="$(jq -er .version deno.json)"
+          test "$RELEASE_TAG" = "v$version"
+          commit="$(git rev-parse HEAD)"
+          test "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")" = "$commit"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+      - name: Check source and documentation
+        run: |
+          deno fmt --check
+          deno lint
+          deno task check:docs
+      - name: Prepare verified release binaries and package
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+            --json tagName,isDraft,assets > "$RUNNER_TEMP/jsr-release.json"
+          deno run --allow-read --allow-write --allow-net scripts/prepare-jsr.ts \
+            --release "$RUNNER_TEMP/jsr-release.json" --tag "$RELEASE_TAG" \
+            --output "$RUNNER_TEMP/jsr-package" > "$RUNNER_TEMP/jsr-manifest.json"
+          deno publish --dry-run 2>&1 | tee "$RUNNER_TEMP/jsr-dry-run.txt"
+          # Confirm that Git ignore rules did not remove staged package files.
+          test "$(grep -c '^ *file://' "$RUNNER_TEMP/jsr-dry-run.txt")" = \
+            "$(jq '.files | length' "$RUNNER_TEMP/jsr-manifest.json")"
+          jq -r '.files[]' "$RUNNER_TEMP/jsr-manifest.json" | while IFS= read -r filename; do
+            grep -Fq "file://$GITHUB_WORKSPACE/$filename (" "$RUNNER_TEMP/jsr-dry-run.txt"
+          done
+          tar -czf "$RUNNER_TEMP/jsr-package.tar.gz" -C "$RUNNER_TEMP/jsr-package" .
+          test "$(stat -c %s "$RUNNER_TEMP/jsr-package.tar.gz")" -lt 20971520
+          {
+            echo "## JSR package validation"
+            echo "Tag: $RELEASE_TAG"
+            echo "Commit: $(git rev-parse HEAD)"
+            echo "Publish requested: ${{ inputs.publish }}"
+            echo '### Files, uncompressed size, and release checksums'
+            echo '```json'
+            cat "$RUNNER_TEMP/jsr-manifest.json"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Verify prepared package query
+        env:
+          PGURL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+          DENO_DIR: ${{ runner.temp }}/deno-package-smoke
+        run: |
+          set -euo pipefail
+          unset DENO_LIBPQ_PATH DENO_LIBPQ_URL
+          cd "$RUNNER_TEMP"
+          deno run --config "$RUNNER_TEMP/jsr-package/deno.json" \
+            --allow-ffi --allow-env --allow-net --allow-read --allow-write \
+            "$GITHUB_WORKSPACE/scripts/smoke-package.ts" \
+            "file://$RUNNER_TEMP/jsr-package/src/mod.ts" \
+            "file://$RUNNER_TEMP/jsr-package/src/libpq.ts"
+      - name: Upload prepared package
+        uses: actions/upload-artifact@v6
+        with:
+          name: jsr-package
+          path: |
+            ${{ runner.temp }}/jsr-package.tar.gz
+            ${{ runner.temp }}/jsr-manifest.json
+          if-no-files-found: error
+          retention-days: 7
+
+  smoke:
+    name: Verify package on ${{ matrix.runner }}
+    needs: validate
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm, macos-15, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.validate.outputs.commit }}
+      - name: Install Deno
+        uses: ./.github/actions/setup-deno
+      - uses: actions/download-artifact@v7
+        with:
+          name: jsr-package
+          path: ${{ runner.temp }}/jsr-artifact
+      - name: Verify both entry points with packaged binaries
+        env:
+          DENO_DIR: ${{ runner.temp }}/deno-package-smoke
+        run: |
+          set -euo pipefail
+          unset DENO_LIBPQ_PATH DENO_LIBPQ_URL PGURL
+          mkdir "$RUNNER_TEMP/jsr-package"
+          tar -xzf "$RUNNER_TEMP/jsr-artifact/jsr-package.tar.gz" -C "$RUNNER_TEMP/jsr-package"
+          cd "$RUNNER_TEMP"
+          deno run --config "$RUNNER_TEMP/jsr-package/deno.json" \
+            --allow-ffi --allow-env --allow-net --allow-read --allow-write \
+            "$GITHUB_WORKSPACE/scripts/smoke-package.ts" \
+            "file://$RUNNER_TEMP/jsr-package/src/mod.ts" \
+            "file://$RUNNER_TEMP/jsr-package/src/libpq.ts"
+
+  publish:
+    name: Publish verified version to JSR
+    if: ${{ inputs.publish }}
+    needs: [validate, smoke]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.validate.outputs.commit }}
+      - name: Install Deno
+        uses: ./.github/actions/setup-deno
+      - uses: actions/download-artifact@v7
+        with:
+          name: jsr-package
+          path: ${{ runner.temp }}/jsr-artifact
+      - name: Restore verified binaries and confirm unchanged tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          EXPECTED_COMMIT: ${{ needs.validate.outputs.commit }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_COMMIT"
+          git fetch --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          test "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")" = "$EXPECTED_COMMIT"
+          tar -xzf "$RUNNER_TEMP/jsr-artifact/jsr-package.tar.gz" ./prebuilds
+      - name: Stop if the JSR version already exists
+        env:
+          PACKAGE_VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          set -euo pipefail
+          status="$(curl -sS -o "$RUNNER_TEMP/jsr-version.json" -w '%{http_code}' \
+            -H 'Accept: application/json' \
+            "https://jsr.io/@carragom/deno-pg-ffi/${PACKAGE_VERSION}_meta.json")"
+          case "$status" in
+            404) ;;
+            200) echo "JSR version $PACKAGE_VERSION already exists; nothing was published."; exit 1 ;;
+            *) echo "Cannot verify JSR version availability: HTTP $status"; exit 1 ;;
+          esac
+      - name: Recheck and publish
+        run: |
+          set -euo pipefail
+          deno publish --dry-run
+          deno publish
+
+  verify-published:
+    name: Verify published JSR package
+    needs: [validate, publish]
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:17-trixie
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.validate.outputs.commit }}
+      - name: Install Deno
+        uses: ./.github/actions/setup-deno
+      - name: Import both registry entry points and run a query
+        env:
+          PACKAGE_VERSION: ${{ needs.validate.outputs.version }}
+          PGURL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+          DENO_DIR: ${{ runner.temp }}/deno-jsr-consumer
+        run: |
+          set -euo pipefail
+          unset DENO_LIBPQ_PATH DENO_LIBPQ_URL
+          cd "$RUNNER_TEMP"
+          specifier="jsr:@carragom/deno-pg-ffi@$PACKAGE_VERSION"
+          deno run --no-config --no-lock \
+            --allow-ffi --allow-env --allow-net --allow-read --allow-write \
+            "$GITHUB_WORKSPACE/scripts/smoke-package.ts" "$specifier" "$specifier/libpq"

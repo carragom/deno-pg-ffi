@@ -37,12 +37,13 @@ formatting, and linting. Requires Deno 2.9+ and libpq 17+.
 - Statements bind to their preparing connection. Unnamed prepare overwrites;
   unnamed disposal must not deallocate other statements. Named disposal uses
   `DEALLOCATE`. `Notifier` owns its own connection; it is the root listen API.
-- Preserve text-protocol codec contracts, private client/shared pool registries,
-  strict Temporal errors without normalization/fallback, and required session
-  settings. Validate serialized text for NUL and numbers for finiteness; bytea
-  zero bytes remain valid. See [parameter docs](src/codecs/params.ts),
+- Preserve text-protocol converter contracts, private client/shared pool
+  registries, strict Temporal errors without normalization/fallback, and
+  required session settings. Validate converted text for NUL and numbers for
+  finiteness; bytea zero bytes remain valid. See
+  [parameter docs](src/codecs/params.ts),
   [client options](src/client/client.ts), and
-  [architecture](DEVEL.md#architecture) before changing codecs.
+  [architecture](DEVEL.md#architecture) before changing converters.
 - Materialize cached plain row objects lazily; check disposal before returning a
   cached row. Snapshot metadata and copied rows do not require a live result.
   Derive affected-row counts from server command tags, not SQL text; SELECT
@@ -84,6 +85,13 @@ formatting, and linting. Requires Deno 2.9+ and libpq 17+.
   points need `@module` and runnable examples. Raw functions document ownership,
   return codes, and failures. Deviating pointer wrappers need
   `@tags libpq-deviation` and a **Differs from C** sentence.
+- Use "converters" for JavaScript/PostgreSQL value conversion, qualified as
+  "parameter converters" or "result converters" to identify the direction.
+- When asked to commit, follow the Conventional Commit guidance in
+  [releases](DEVEL.md#releases).
+- Keep `prebuilds/` uncommitted. JSR includes verified release binaries and
+  runtime sources, but excludes README, tests, and developer tooling. Publish
+  only through the manual GitHub workflow when explicitly requested.
 - Keep precise consumer contracts/examples in public JSDoc, onboarding
   essentials in README, and contributor workflows in DEVEL. Inline comments
   explain non-obvious ownership transfers, ordering, and parser constraints; do
@@ -108,7 +116,7 @@ and [checks before submitting](DEVEL.md#checks-before-submitting).
 | Runnable examples        | `deno test -P --trace-leaks --doc`; `ts ignore` fences are skipped.            |
 | Client/notifier/lifetime | Client, lifetime, and notifier suites with `--trace-leaks`.                    |
 | Pool/reset               | Above plus `src/client/pool_test.ts`.                                          |
-| Codecs/conninfo          | Adjacent codec/conninfo tests; managed round trips for behavior changes.       |
+| Converters/conninfo      | Adjacent converter/conninfo tests; managed round trips for behavior changes.   |
 | Native symbols/loading   | Relevant raw/native tests; retain the libpq 17+ import-time failure.           |
 | Local preload module     | A focused local test, documentation examples, and a benchmark.                 |
 | Build/workflows          | Relevant platform/artifact checks from DEVEL; a JS-only check is insufficient. |

@@ -1,12 +1,23 @@
 {
 	"name": "@carragom/deno-pg-ffi",
-	"version": "0.0.0",
+	"version": "0.1.0-alpha.1",
 	"github": "https://github.com/carragom/deno-pg-ffi",
 	"description": "Deno native bindings for PostgreSQL libpq",
 	"lock": false,
 	"exports": {
 		".": "./src/mod.ts",
 		"./libpq": "./src/libpq.ts"
+	},
+	"publish": {
+		"include": [
+			"deno.json",
+			"LICENSE",
+			"THIRD_PARTY_LICENSES.txt",
+			"src/**/*.ts",
+			"prebuilds/*.so",
+			"prebuilds/*.dylib"
+		],
+		"exclude": ["src/**/*_test.ts", "!prebuilds/"]
 	},
 	"fmt": {
 		"useTabs": true,
@@ -38,9 +49,9 @@
 	"tasks": {
 		"check:docs": "deno doc --lint src/mod.ts src/libpq.ts",
 		"build:libpq": "deno -A scripts/build-libpq.ts",
-		"test": "deno test -P --trace-leaks --coverage --doc --clean",
+		"test": "deno test -P --trace-leaks --doc --clean",
 		"test:local": {
-			"command": "deno test -P --preload=./scripts/select-local-libpq.ts --trace-leaks --coverage --doc --clean",
+			"command": "deno test -P --preload=./scripts/select-local-libpq.ts --trace-leaks --doc --clean",
 			"dependencies": [
 				"build:libpq"
 			]

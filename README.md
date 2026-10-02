@@ -1,8 +1,8 @@
-# @carragom/deno-pg-ffi
+# Deno PG FFI
 
 Deno native bindings for PostgreSQL libpq.
 
-A safe, fast PostgreSQL client built on libpq. The managed API provides
+A safe, fast and rich PostgreSQL client built on libpq. The managed API provides
 parameterized queries, pooling, prepared statements, notifications, and
 automatic resource disposal. The `/libpq` entry point exposes raw C functions
 when you need direct access to libpq's capabilities.
@@ -48,6 +48,10 @@ The intended JSR import after publication is:
 import { Client } from 'jsr:@carragom/deno-pg-ffi@0.1.0-alpha.1'
 ```
 
+The JSR package includes binaries under `prebuilds/` and loads the appropriate
+one from JSR. A source checkout without that directory downloads from GitHub.
+JSR's overview uses the main module's JSDoc; this README stays on GitHub.
+
 `Client.connect`, `Pool.create`, and `Notifier.connect` accept a connection
 string, a `URL`, or a libpq options object with string values. Without an
 argument, they use `PGURL`, then libpq's `PG*` variables and defaults. Set
@@ -90,19 +94,30 @@ behavior.
 ## Queries and values
 
 - `query(sql, params?)` runs one statement with `$1`, `$2`, … parameters.
-- `exec(sql)` runs one or more statements without parameters and returns a
-  disposable batch of results.
-- `prepare(sql, name?)` returns a statement bound to its connection;
-  `statement.execute(params?)` reuses it.
+- `exec(sql)` runs one or more statements without parameters.
+- `prepare(sql, name?)` returns a prepared statement bound to its connection;
+  `statement.execute(params?)` runs that statement.
 
 A `Client` accepts one command at a time; overlapping calls throw. Use a pool
 for concurrency. `Client.close()` waits for the active command rather than
-cancelling it. Generic row types are TypeScript contracts, not runtime
-validation.
+cancelling it.
 
-The client uses text parameters and results. Use `json()` for objects and
-`array()` for arrays; plain objects and arrays are not accepted as parameters.
-SQL casts select their PostgreSQL types:
+### Parameters
+
+Pass parameter values in the second argument, in the order of `$1`, `$2`, ….
+Strings, numbers, booleans, and other supported scalar values can be passed
+directly. Parameter converters turn these JavaScript values into the text
+PostgreSQL expects; `null` is sent as SQL NULL.
+
+For structured values, use `json()` to store JSON or `array()` to store a
+PostgreSQL array. These helpers produce different text formats: `json([1, 2])`
+produces `'[1,2]'`, while `array([1, 2])` produces `'{1,2}'`. Plain JavaScript
+objects and arrays cannot be individual parameter values.
+
+PostgreSQL determines each parameter's SQL type from its context, such as a
+table column, or from an explicit cast. In this example, `$1::jsonb` tells
+PostgreSQL to read the first parameter as JSON, and `$2::int4[]` tells it to
+read the second as an integer array:
 
 ```ts
 import { array, Client, json } from './src/mod.ts'
@@ -119,22 +134,55 @@ result.rows[0].person.name // 'Ada'
 result.rows[0].ids // [1, 2, 3]
 ```
 
-Built-in mappings include booleans, numbers, `int8` as `bigint`, bytea as
-`Uint8Array`, parsed JSON, arrays, and Temporal dates/timestamps. `numeric` and
-unknown scalar types remain strings. `time` and `interval` remain strings unless
-`temporalTime` or `temporalInterval` enables their strict Temporal codec;
-unsupported values can throw when a row is read. Client and pool registration
-methods allow custom deserializers. See the [type mappings](src/mod.ts),
-[parameter reference](src/codecs/params.ts), and
-[Temporal options](src/client/client.ts).
+See the [parameter reference](src/codecs/params.ts) for all accepted values and
+the `json()` and `array()` helpers.
 
-Rows are indexed and iterable, with `.length` and `.at()`; use
-`[...result.rows]` for an Array. Row objects are decoded lazily, but the
-complete native result is buffered before the command resolves. Read rows before
-disposing their result; row objects already copied out remain usable. SQL
-failures throw [PostgresError](src/client/error.ts). See the
-[result reference](src/client/result.ts) for counts, metadata, and lifetime
-rules.
+### Returned values
+
+PostgreSQL also returns values as text. Result converters turn that text into
+JavaScript values according to each column's PostgreSQL type. For example, an
+`int4` column becomes a `number`, while an `int8` column becomes a `bigint`,
+regardless of the JavaScript type of the parameter you supplied.
+
+| PostgreSQL column type             | JavaScript value                                                                 |
+| ---------------------------------- | -------------------------------------------------------------------------------- |
+| `bool`                             | `boolean`                                                                        |
+| `int2`, `int4`, `float4`, `float8` | `number`                                                                         |
+| `int8`                             | `bigint`                                                                         |
+| `numeric`                          | `string`, preserving decimal precision                                           |
+| `json`, `jsonb`                    | Parsed JSON, including objects and arrays                                        |
+| `bytea`                            | `Uint8Array`                                                                     |
+| `date`, `timestamp`, `timestamptz` | `Temporal.PlainDate`, `Temporal.PlainDateTime`, `Temporal.Instant`, respectively |
+| Built-in PostgreSQL arrays         | JavaScript arrays, with elements converted by their PostgreSQL type              |
+
+SQL NULL becomes `null`. Types without a built-in result converter remain
+strings. `time` and `interval` also remain strings by default; enable
+`temporalTime` or `temporalInterval` on a client or pool to receive
+`Temporal.PlainTime` or `Temporal.Duration`. These converters throw for values
+Temporal cannot represent. See [Temporal options](src/client/client.ts) for
+supported values and restrictions.
+
+To customize returned values, register result converters with
+`client.registerScalar()` or `pool.registerScalar()`; `registerArray()` connects
+an array type to its element converter. See the
+[value converter reference](src/mod.ts) for the full type list and
+[custom result converters](src/client/client.ts) for registration examples. A
+generic such as `query<{ ids: number[] }>()` describes the expected row to
+TypeScript; it does not select converters or validate returned values.
+
+### Reading results
+
+`result.rows` is an indexed, iterable collection with `.length` and `.at()`. Use
+`result.rows[0]` to read one row, or `[...result.rows]` to copy all rows into a
+JavaScript Array. The full database result is collected before the query
+resolves; each row is converted and cached only when you first read it.
+
+Read or copy rows before disposing their result. Reading rows through
+`result.rows` after disposal throws, but row objects you already obtained remain
+usable. SQL failures reject the command with
+[PostgresError](src/client/error.ts); conversion failures throw when you first
+read the affected row. See the [result reference](src/client/result.ts) for
+counts, metadata, and disposal.
 
 ## Notifications
 
@@ -167,11 +215,11 @@ notifier; it does not automatically reconnect.
 Both entry points load libpq at import time, including when creating a lazy
 pool. Libraries older than 17 fail during import.
 
-| Setting           | Behavior                                                       |
-| ----------------- | -------------------------------------------------------------- |
-| `DENO_LIBPQ_PATH` | Load a local library; takes precedence over the download URL.  |
-| `DENO_LIBPQ_URL`  | Override the download base URL when no local path is set.      |
-| Neither set       | Download from the GitHub release matching the package version. |
+| Setting           | Behavior                                                                |
+| ----------------- | ----------------------------------------------------------------------- |
+| `DENO_LIBPQ_PATH` | Load a local library; takes precedence over the download URL.           |
+| `DENO_LIBPQ_URL`  | Override the download base URL when no local path is set.               |
+| Neither set       | Load packaged binaries from JSR; source checkouts download from GitHub. |
 
 Release artifacts support Linux and macOS on x86_64 and aarch64:
 
@@ -202,3 +250,5 @@ NULL pointers, and ownership rules. Its supported functions are declared on
 - [Managed API documentation](src/mod.ts) — public JSDoc and runnable examples.
 - [Raw libpq documentation](src/libpq.ts) — C arguments, errors, and ownership.
 - [Development guide](DEVEL.md) — building, testing, benchmarks, and releases.
+- [Third-party licenses](THIRD_PARTY_LICENSES.txt) — libpq on all platforms and
+  OpenSSL included in macOS binaries; also available as a release asset.

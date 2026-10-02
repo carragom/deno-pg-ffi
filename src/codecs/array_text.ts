@@ -34,7 +34,7 @@ export function validateArrayDelimiter(delimiter: string): void {
 	}
 }
 
-/** @internal Quote one serialized element for an array literal. */
+/** @internal Quote one converted element for an array literal. */
 export function quoteArrayElement(text: string): string {
 	return `"${text.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`
 }

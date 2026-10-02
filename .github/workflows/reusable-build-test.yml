@@ -113,14 +113,12 @@ jobs:
           submodules: recursive
 
       - name: Install Deno
-        run: |
-          set -euo pipefail
-          curl -fsSL https://deno.land/install.sh | sh -s -- --no-modify-path
-          echo "$HOME/.deno/bin" >> "$GITHUB_PATH"
+        uses: ./.github/actions/setup-deno
 
       - name: Build libpq from postgres submodule
         run: |
           set -euxo pipefail
+          deno run --allow-read scripts/check-third-party-licenses.ts
           deno task build:libpq -o ${{ inputs.output }}
 
       - name: Start disposable local PostgreSQL without TLS
@@ -239,10 +237,7 @@ jobs:
           submodules: recursive
 
       - name: Install Deno
-        run: |
-          set -euo pipefail
-          curl -fsSL https://deno.land/install.sh | sh -s -- --no-modify-path
-          echo "$HOME/.deno/bin" >> "$GITHUB_PATH"
+        uses: ./.github/actions/setup-deno
 
       - name: Install dependencies
         run: |
@@ -256,9 +251,10 @@ jobs:
         run: |
           set -euo pipefail
           openssl_prefix="$(brew --prefix openssl@3)"
+          deno run --allow-read scripts/check-third-party-licenses.ts \
+            --openssl-license "$openssl_prefix/LICENSE.txt"
           deno task build:libpq --force -o "$LIBPQ_OUTPUT" \
             --openssl-prefix "$openssl_prefix" --static-openssl
-          cp "$openssl_prefix/LICENSE.txt" "dist/$LIBPQ_OUTPUT.OPENSSL-LICENSE.txt"
 
       - name: Start disposable PostgreSQL with TLS
         run: |
@@ -343,12 +339,10 @@ jobs:
               -D "$RUNNER_TEMP/libpq-pgdata" stop -w
           fi
 
-      - name: Upload binary artifact and OpenSSL license
+      - name: Upload binary artifact
         if: ${{ inputs.upload_artifact }}
         uses: actions/upload-artifact@v6
         with:
           name: ${{ inputs.output }}
-          path: |
-            dist/${{ inputs.output }}
-            dist/${{ inputs.output }}.OPENSSL-LICENSE.txt
+          path: dist/${{ inputs.output }}
           if-no-files-found: error

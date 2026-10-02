@@ -118,11 +118,10 @@ export function buildLibpq(
 
 function homebrewOpenSSL(): string | undefined {
 	try {
-		const output = new Deno.Command('brew', {
-			args: ['--prefix', 'openssl@3'],
+		const output = Deno.spawnAndWaitSync('brew', ['--prefix', 'openssl@3'], {
 			stdout: 'piped',
 			stderr: 'null',
-		}).outputSync()
+		})
 		return output.success
 			? new TextDecoder().decode(output.stdout).trim() || undefined
 			: undefined
@@ -134,11 +133,10 @@ function homebrewOpenSSL(): string | undefined {
 
 /** Rejects external dylibs in macOS release builds. */
 function checkMacosDependencies(path: string): void {
-	const output = new Deno.Command('otool', {
-		args: ['-L', path],
+	const output = Deno.spawnAndWaitSync('otool', ['-L', path], {
 		stdout: 'piped',
 		stderr: 'piped',
-	}).outputSync()
+	})
 	if (!output.success) {
 		throw new Error(
 			`otool failed: ${new TextDecoder().decode(output.stderr)}`,
@@ -161,12 +159,11 @@ function checkMacosDependencies(path: string): void {
 }
 
 function run(command: string, args: string[], cwd: string): void {
-	const status = new Deno.Command(command, {
-		args,
+	const status = Deno.spawnAndWaitSync(command, args, {
 		cwd,
 		stdout: 'inherit',
 		stderr: 'inherit',
-	}).outputSync()
+	})
 	if (!status.success) {
 		throw new Error(`${command} failed with exit code ${status.code}.`)
 	}

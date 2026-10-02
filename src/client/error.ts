@@ -12,7 +12,7 @@ import {
  * this error retains no native result. The native error result is already cleared.
  *
  * Connection, transport, closed-owner, and overlapping-command failures use
- * ordinary Errors. Parameter validation uses TypeError; decoder failures happen
+ * ordinary Errors. Parameter validation uses TypeError; result conversion failures happen
  * later during lazy row access and propagate their own errors.
  *
  * @example

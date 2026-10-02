@@ -93,7 +93,7 @@ function rowCountFromTag(tag: string): number | undefined {
  * {@linkcode Rows.at} and valid row-index accessors check disposal before reading
  * even a cached row. The length is a snapshot. Previously materialized objects
  * remain usable after disposal; `[...result.rows]` materializes all rows for use
- * outside the result's lifetime. Decoder failures happen on first row access.
+ * outside the result's lifetime. Result conversion failures happen on first row access.
  *
  * @example
  * ```ts

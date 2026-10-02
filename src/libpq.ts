@@ -7,7 +7,8 @@
  * and C enums.
  *
  * Importing this module eagerly loads libpq 17+. Set `DENO_LIBPQ_PATH` to a
- * compatible library, or let the loader download one. Requires `--allow-ffi`
+ * compatible library, or let the loader fetch a packaged binary from JSR
+ * (the matching GitHub release for a source checkout). Requires `--allow-ffi`
  * and `--allow-env` for loader settings and the example's `PGURL` lookup.
  * Downloads also need `--allow-net`, `--allow-read`, and `--allow-write` for
  * the library cache. libpq reads its own `PG*` variables and `.pgpass` and
@@ -35,7 +36,7 @@
  *
  * @example Connect, execute a text query, copy rows, and release native handles
  * ```ts
- * import { libpq, ConnStatusType, ExecStatusType } from './libpq.ts'
+ * import { libpq, ConnStatusType, ExecStatusType } from '@carragom/deno-pg-ffi/libpq'
  *
  * const encoder = new TextEncoder()
  * const cString = (value: string) => encoder.encode(value + '\0')

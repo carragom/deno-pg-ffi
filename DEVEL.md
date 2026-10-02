@@ -61,7 +61,9 @@ deno task build:libpq --openssl-prefix "$(brew --prefix openssl@3)" \
 Static builds stage only OpenSSL archives, reject non-system dylib dependencies,
 set a relocatable install name, and apply an ad hoc signature. Users of those
 assets need no Homebrew installation. OpenSSL updates require rebuilding these
-assets; include its license when distributing them.
+assets. Include [THIRD_PARTY_LICENSES.txt](THIRD_PARTY_LICENSES.txt) when
+distributing native binaries: it contains PostgreSQL's license for every
+platform and OpenSSL's license for the macOS builds.
 
 `test:local` and `bench:local` build first, then run Deno directly with
 `--preload=./scripts/select-local-libpq.ts`. The preload selects the default
@@ -80,11 +82,11 @@ table; older libraries fail at import because `PQsocketPoll` and
 
 ## Artifact compatibility
 
-Without `DENO_LIBPQ_PATH`, the loader downloads from the GitHub release matching
-the package version. `DENO_LIBPQ_URL` overrides that download base URL. Linux
-tries `libpq-openssl3_<arch>.so`, then `libpq-openssl11_<arch>.so`; macOS
-selects `libpq_<arch>.dylib`. `<arch>` is `x86_64` or `aarch64`, matching the
-running Deno binary.
+Without `DENO_LIBPQ_PATH`, a source checkout without `prebuilds/` downloads from
+the GitHub release matching the package version. `DENO_LIBPQ_URL` overrides that
+download base URL. Linux tries `libpq-openssl3_<arch>.so`, then
+`libpq-openssl11_<arch>.so`; macOS selects `libpq_<arch>.dylib`. `<arch>` is
+`x86_64` or `aarch64`, matching the running Deno binary.
 
 Linux release assets require the matching architecture and runtime libraries:
 
@@ -122,7 +124,7 @@ deno task test          # selected local library or downloaded artifact
 deno task test:local    # build and select the default dist/ library
 ```
 
-Both test tasks include documentation examples, leak tracing, and coverage.
+Both test tasks include documentation examples and leak tracing.
 
 The default suite and runnable documentation examples must preserve existing
 data, persistent objects, and persistent configuration. Create only temporary
@@ -246,17 +248,17 @@ uses one poll deadline; command waits are unlimited. `PQsocketPoll` waits inside
 libpq; Deno FFI `nonblocking: true` moves the wait off the JavaScript thread.
 
 Pool reset rolls back open/failed transactions, sends `DISCARD ALL` separately,
-then restores codec session settings. Combining reset SQL would put
+then restores converter session settings. Combining reset SQL would put
 `DISCARD ALL` inside an implicit transaction. The pool shares its registry with
 connections and retained results, so overrides affect unread rows, while
 materialized rows stay cached.
 
-Text codecs depend on `DateStyle = 'ISO, YMD'` and, when enabled,
+Result converters depend on `DateStyle = 'ISO, YMD'` and, when enabled,
 `IntervalStyle = iso_8601`. PostgreSQL interval fields have independent signs;
 keep calendar months/days separate from elapsed time and preserve signed
-fractions. Unsupported Temporal values throw during lazy row access. Decoder
-details and user options are documented on the managed API; codec tests live
-beside the codecs.
+fractions. Unsupported Temporal values throw during lazy row access. Result
+converter details and user options are documented on the managed API; converter
+tests live beside their implementations.
 
 ## Adding an FFI symbol
 
@@ -315,16 +317,18 @@ each use a matrix calling
 [reusable-build-test.yml](.github/workflows/reusable-build-test.yml).
 Platform-specific build tools and cluster setup stay in conditional Linux/macOS
 jobs. The Linux container selects the distro/version; setup reads
-`/etc/os-release`. Both platforms install stable Deno with the official shell
-installer.
+`/etc/os-release`. All workflows use the local
+[setup action](.github/actions/setup-deno/action.yml) to install Deno with the
+official shell installer. The setup action uses Bash and requires curl and
+unzip, without a Node runtime dependency, so it can also run under `gh act`.
+Update `deno_version` in that action to change the workflow Deno version.
 
 | Platform | CI build environment                    | Release build environment                  |
 | -------- | --------------------------------------- | ------------------------------------------ |
 | Linux    | Debian 13, x86_64/aarch64               | AlmaLinux 8 and 9, both architectures      |
 | macOS    | `macos-15` ARM / `macos-15-intel` Intel | Same runners, macOS 15.0 deployment target |
 
-Every test run includes type checking, documentation examples, leak tracing, and
-coverage:
+Every test run includes type checking, documentation examples, and leak tracing:
 
 | Run                      | Library                                    | Connection and TLS test                    |
 | ------------------------ | ------------------------------------------ | ------------------------------------------ |
@@ -361,20 +365,79 @@ Artifact uploads are disabled by CI.
 
 ## Releases
 
-Keep the `deno.json` version, release notes in `CHANGELOG.md`, and GitHub
-`v<version>` tag aligned. The loader builds its default download URL from that
-version and the configured GitHub repository, so the matching release must have
-downloadable assets.
+Keep the `deno.json` version and GitHub `v<version>` tag aligned. Source
+checkouts download from that GitHub release. JSR packages include the matching
+release's binaries in `prebuilds/` and load them from the same package version.
+
+Release notes live on the GitHub release page. The workflow uses
+[GitHub-generated notes](https://docs.github.com/en/repositories/releasing-projects-on-github/automatically-generated-release-notes),
+which summarize merged pull requests and link to the compared changes. Each run
+regenerates the notes and includes the third-party license link. Rerunning an
+existing tag replaces its notes and assets. GitHub's generator does not
+interpret Conventional Commit types; commit-based generation remains a future
+workflow improvement.
+
+Use [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/):
+`<type>(<optional scope>): <description>`. Use `feat` for features, `fix` for
+bug fixes, and `docs`, `build`, `ci`, `refactor`, `perf`, `test`, or `chore` for
+other changes. Describe the change, for example
+`fix(pool): release connections after reset failures`. Mark breaking changes
+with `!` after the type/scope or a `BREAKING CHANGE:` footer. Use the same
+format for squash commit titles.
 
 The release workflow runs on version tags or manual dispatch for a selected tag.
 After building and testing, it publishes tagged releases with six binaries:
 OpenSSL 1.1/3 Linux variants for both architectures, and the two macOS dylibs.
 Tags containing a hyphen, including alpha versions, become GitHub prereleases.
-macOS assets include companion OpenSSL licenses. Linux assets link OpenSSL
-dynamically; macOS assets contain OpenSSL and depend only on system dylibs.
-Verify the complete asset set and automatic loader download after publication.
+One shared `THIRD_PARTY_LICENSES.txt` asset accompanies all six binaries;
+release notes link to it. Linux assets link OpenSSL dynamically; macOS assets
+contain OpenSSL and depend only on system dylibs. The build jobs verify that the
+shared file contains the checked-out `postgres/COPYRIGHT` and, on macOS, the
+installed OpenSSL's `LICENSE.txt`. Update the corresponding text in
+[THIRD_PARTY_LICENSES.txt](THIRD_PARTY_LICENSES.txt) when either upstream
+license changes. Run
+`deno run --allow-read scripts/check-third-party-licenses.ts` to check the
+PostgreSQL text locally; add `--openssl-license /path/to/LICENSE.txt` to check
+the OpenSSL text too. Verify the complete asset set and automatic loader
+download after publication.
 
-GitHub releases and JSR publication are separate. The workflow does not publish
-to JSR. If publishing the package there, first run the checks above and
-`deno publish --dry-run`, then publish the matching package version with
-`deno publish`.
+GitHub releases and JSR publication are separate. `release.yml` builds and
+publishes the binaries; `publish-jsr.yml` is manually triggered from GitHub's
+Actions tab. The JSR package is linked to this repository and uses OIDC with
+provenance, without a publishing secret. Deno uses the same setup action and
+version pin as CI and binary releases. CI failure investigation remains separate
+from this publishing flow.
+
+First commit the publishing changes and ensure the selected release tag contains
+them. Run **Publish JSR** with `tag` set to that tag and `publish` unchecked. It
+checks tag/version agreement, formatting, lint, and API docs, downloads all six
+release binaries, verifies their sizes and SHA-256 digests, and checks that the
+release's licenses match the checkout. It stages exactly the files selected by
+`publish.include` / `publish.exclude`, enforces JSR's 20 MiB file/package and
+compressed-upload limits, and runs a publishing dry run. Tests, README,
+developer documents, scripts, and build sources are excluded; the package
+overview uses `src/mod.ts` JSDoc. Generated `prebuilds/` files are ignored by
+Git and included explicitly for publishing.
+
+The workflow summary records the selected commit, files, size, and release
+checksums. An isolated prepared package runs a query against a disposable
+PostgreSQL service; both entry points load their packaged libraries on Linux and
+macOS, on both architectures. These are package smoke checks, not the full CI
+suite. The prepared package remains a workflow artifact for seven days.
+
+After reviewing validation, run the workflow again with `publish` checked. It
+repeats validation, restores the verified binary artifact on the same source
+commit, checks that the tag has not moved, rejects an existing JSR version, and
+runs `deno publish` from GitHub Actions. Only that job receives
+`id-token: write`. A final job imports both pinned JSR entry points with a fresh
+cache and runs a query. If publishing reports an ambiguous failure, check JSR
+version status before retrying. A post-publication verification failure does not
+roll back the immutable version.
+
+After publishing to JSR, preserve the release tag and GitHub binaries. Fixes
+require a new package version and matching binary release. For local packaging
+checks, use `deno publish --dry-run`; publishing itself belongs to the manual
+GitHub workflow. To reproduce preparation locally, capture
+`gh release view <tag> --json tagName,isDraft,assets` to a file and run
+`deno run --allow-read --allow-write --allow-net scripts/prepare-jsr.ts
+--release <json> --tag <tag> --output <empty directory outside the checkout>`.
