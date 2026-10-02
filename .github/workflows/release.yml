@@ -1,0 +1,118 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*" # Matches semantic version tags like v1.2.3 or v1.2.3-rc.1
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate-release:
+    name: Validate release tag
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout release metadata
+        uses: actions/checkout@v6
+
+      - name: Require a tag matching the package version
+        env:
+          RELEASE_REF_TYPE: ${{ github.ref_type }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          test "$RELEASE_REF_TYPE" = tag
+          release_version="$(jq -er .version deno.json)"
+          test "$RELEASE_TAG" = "v$release_version"
+          test -s CHANGELOG.md
+
+  build-and-test:
+    name: Build and Test ${{ matrix.output }}
+    needs: validate-release
+    uses: ./.github/workflows/reusable-build-test.yml
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux
+            runner: ubuntu-24.04
+            container: ghcr.io/almalinux/almalinux:8
+            openssl: openssl11
+            arch: x86_64
+            output: libpq-openssl11_x86_64.so
+          - platform: linux
+            runner: ubuntu-24.04-arm
+            container: ghcr.io/almalinux/almalinux:8
+            openssl: openssl11
+            arch: aarch64
+            output: libpq-openssl11_aarch64.so
+          - platform: linux
+            runner: ubuntu-24.04
+            container: ghcr.io/almalinux/almalinux:9
+            openssl: openssl3
+            arch: x86_64
+            output: libpq-openssl3_x86_64.so
+          - platform: linux
+            runner: ubuntu-24.04-arm
+            container: ghcr.io/almalinux/almalinux:9
+            openssl: openssl3
+            arch: aarch64
+            output: libpq-openssl3_aarch64.so
+          - platform: macos
+            runner: macos-15
+            output: libpq_aarch64.dylib
+          - platform: macos
+            runner: macos-15-intel
+            output: libpq_x86_64.dylib
+    with:
+      platform: ${{ matrix.platform }}
+      runner: ${{ matrix.runner }}
+      container: ${{ matrix.container || '' }}
+      output: ${{ matrix.output }}
+      upload_artifact: true
+
+  release:
+    name: Publish release
+    runs-on: ubuntu-24.04
+    needs:
+      - build-and-test
+    steps:
+      - name: Checkout release notes
+        uses: actions/checkout@v6
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v7
+        with:
+          pattern: "*pq*"
+          merge-multiple: true
+          path: release-assets
+
+      - name: Verify all binaries and bundled OpenSSL licenses
+        run: |
+          set -euo pipefail
+          for filename in \
+            libpq-openssl11_x86_64.so libpq-openssl11_aarch64.so \
+            libpq-openssl3_x86_64.so libpq-openssl3_aarch64.so \
+            libpq_aarch64.dylib libpq_x86_64.dylib \
+            libpq_aarch64.dylib.OPENSSL-LICENSE.txt \
+            libpq_x86_64.dylib.OPENSSL-LICENSE.txt; do
+            test -s "release-assets/$filename"
+          done
+
+      - name: Publish tagged release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          body_path: CHANGELOG.md
+          fail_on_unmatched_files: true
+          files: |
+            release-assets/*

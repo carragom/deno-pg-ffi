@@ -1,0 +1,354 @@
+name: Reusable Build and Test
+
+on:
+  workflow_call:
+    inputs:
+      platform:
+        description: Target platform (linux or macos; Windows support can add another job)
+        required: true
+        type: string
+      runner:
+        description: Runner label
+        required: true
+        type: string
+      container:
+        description: Linux distro:version container image; setup reads /etc/os-release
+        required: false
+        default: ""
+        type: string
+      output:
+        description: Output libpq artifact filename
+        required: true
+        type: string
+      test_system_libpq:
+        description: Run the installed system-library suite (enabled by CI)
+        required: false
+        default: false
+        type: boolean
+      upload_artifact:
+        description: Upload built artifact
+        required: false
+        default: false
+        type: boolean
+      run_bench:
+        description: Compare PR client benches against the base SHA
+        required: false
+        default: false
+        type: boolean
+
+# Keep platform-specific build tools, shells, and database setup in separate jobs.
+# Future Windows support adds a conditional job here and entries in the callers' matrices.
+jobs:
+  linux:
+    if: ${{ inputs.platform == 'linux' }}
+    runs-on: ${{ inputs.runner }}
+    container:
+      image: ${{ inputs.container }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      PGURL: postgresql://postgres:postgres@postgres:5432/postgres?sslmode=require
+      LIBPQ_TEST_TLS: "1"
+    services:
+      postgres:
+        image: postgres:17-trixie
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+          # Use the Debian image's self-signed test certificate.
+          POSTGRES_INITDB_ARGS: >-
+            --set=ssl=on
+            --set=ssl_cert_file=/etc/ssl/certs/ssl-cert-snakeoil.pem
+            --set=ssl_key_file=/etc/ssl/private/ssl-cert-snakeoil.key
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - name: Work around Podman archive copying in act
+        if: ${{ env.ACT == 'true' }}
+        # Relative symlinks avoid Podman 5.8.7's /var/run archive-copy regression.
+        run: ln -snf ../run /var/run
+
+      - name: Install Linux dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          set -euxo pipefail
+          . /etc/os-release
+          case "$ID" in
+            debian)
+              apt-get update
+              apt-get install -y --no-install-recommends \
+                bison ca-certificates curl flex gcc git libc6-dev libpq5 libssl-dev \
+                make perl postgresql-common unzip
+              # Let the explicit setup below create the only local cluster.
+              echo 'create_main_cluster = false' >> /etc/postgresql-common/createcluster.conf
+              apt-get install -y --no-install-recommends postgresql-17
+              echo '/usr/lib/postgresql/17/bin' >> "$GITHUB_PATH"
+              ;;
+            almalinux)
+              distro_version="${VERSION_ID%%.*}"
+              rpm --import "https://repo.almalinux.org/almalinux/RPM-GPG-KEY-AlmaLinux-$distro_version" || true
+              dnf -y clean all
+              dnf -y makecache
+              dnf -y update almalinux-release || true
+              dnf -y install \
+                bison flex git gcc make openssl-devel perl postgresql-server unzip
+              ;;
+            *)
+              echo "Unsupported Linux distribution: $ID" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Checkout repository with submodules
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Install Deno
+        run: |
+          set -euo pipefail
+          curl -fsSL https://deno.land/install.sh | sh -s -- --no-modify-path
+          echo "$HOME/.deno/bin" >> "$GITHUB_PATH"
+
+      - name: Build libpq from postgres submodule
+        run: |
+          set -euxo pipefail
+          deno task build:libpq -o ${{ inputs.output }}
+
+      - name: Start disposable local PostgreSQL without TLS
+        run: |
+          set -euxo pipefail
+          id postgres >/dev/null 2>&1 || useradd -r -m postgres
+          PGDATA=/var/lib/pgsql/data
+          SOCKET_DIR=/var/run/postgresql
+          mkdir -p "$PGDATA" "$SOCKET_DIR"
+          chown -R postgres:postgres "$PGDATA" "$SOCKET_DIR"
+          runuser -u postgres -- initdb -D "$PGDATA" --username=postgres --auth=trust --encoding=UTF8
+          cat >> "$PGDATA/postgresql.conf" <<'CONFIG'
+          listen_addresses = '127.0.0.1'
+          port = 5432
+          unix_socket_directories = '/var/run/postgresql'
+          ssl = off
+          CONFIG
+          runuser -u postgres -- pg_ctl start -w -D "$PGDATA"
+
+      # Validates the produced library over TCP with TLS.
+      - name: Run tests with direct library path
+        env:
+          DENO_LIBPQ_PATH: ${{ github.workspace }}/dist/${{ inputs.output }}
+        run: |
+          set -euxo pipefail
+          deno task test
+
+      - name: Compare PR benches against base
+        if: ${{ inputs.run_bench && github.event_name == 'pull_request' }}
+        env:
+          DENO_LIBPQ_PATH: ${{ github.workspace }}/dist/${{ inputs.output }}
+          PGURL: postgresql://postgres@127.0.0.1:5432/postgres?sslmode=disable
+        run: |
+          set -euxo pipefail
+          OUT="${RUNNER_TEMP:-/tmp}"
+          git config --global --add safe.directory "${{ github.workspace }}"
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          git fetch --no-tags origin "$BASE_SHA"
+          deno bench -P bench/client.ts --json > "$OUT/pr.json"
+          if ! git cat-file -e "$BASE_SHA:bench/client.ts" 2>/dev/null; then
+            echo "bench/client.ts missing on base; skipping compare"
+            exit 0
+          fi
+          git worktree add "$OUT/bench-main" "$BASE_SHA"
+          git config --global --add safe.directory "$OUT/bench-main"
+          (
+            cd "$OUT/bench-main"
+            deno bench -P bench/client.ts --json > "$OUT/main.json"
+          )
+          deno run -A "${{ github.workspace }}/scripts/compare-bench-json.ts" \
+            "$OUT/main.json" "$OUT/pr.json"
+
+      # Validates local Postgres connectivity over Unix socket to cover non-TCP client connection behavior.
+      - name: Run tests against local Postgres via unix socket
+        env:
+          DENO_LIBPQ_PATH: ${{ github.workspace }}/dist/${{ inputs.output }}
+          PGURL: postgresql:///postgres?user=postgres&port=5432&host=/var/run/postgresql
+          LIBPQ_TEST_TLS: "0"
+        run: |
+          set -euxo pipefail
+          unset DENO_LIBPQ_URL
+          deno task test
+
+      - name: Run tests with system libpq
+        if: ${{ inputs.test_system_libpq }}
+        env:
+          PGURL: postgresql://postgres@127.0.0.1:5432/postgres?sslmode=disable
+          LIBPQ_TEST_TLS: "0"
+        run: |
+          set -euxo pipefail
+          unset DENO_LIBPQ_URL
+          export DENO_LIBPQ_PATH="/usr/lib/$(gcc -dumpmachine)/libpq.so.5"
+          deno task test
+
+      # Validates plug URL loading by serving the built binary over HTTP with Deno's file server.
+      - name: Run tests with plug and local file server
+        env:
+          DENO_LIBPQ_URL: http://127.0.0.1:8000/
+        run: |
+          set -euxo pipefail
+          unset DENO_LIBPQ_PATH
+          deno run -A jsr:@std/http/file-server dist --port 8000 &
+          server_pid=$!
+          trap 'kill $server_pid' EXIT
+          sleep 2
+          deno task test
+
+      - name: Stop PostgreSQL
+        if: always()
+        run: |
+          if [ -f /var/lib/pgsql/data/postmaster.pid ]; then
+            runuser -u postgres -- pg_ctl stop -w -D /var/lib/pgsql/data
+          fi
+
+      - name: Upload binary artifact
+        if: ${{ inputs.upload_artifact }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ inputs.output }}
+          path: dist/${{ inputs.output }}
+          if-no-files-found: error
+
+  macos:
+    if: ${{ inputs.platform == 'macos' }}
+    runs-on: ${{ inputs.runner }}
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "15.0"
+      CC: /usr/bin/clang
+      PGURL: postgresql://postgres@127.0.0.1:5432/postgres?sslmode=require
+      LIBPQ_TEST_TLS: "1"
+      LIBPQ_OUTPUT: ${{ inputs.output }}
+    steps:
+      - name: Checkout repository with submodules
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Install Deno
+        run: |
+          set -euo pipefail
+          curl -fsSL https://deno.land/install.sh | sh -s -- --no-modify-path
+          echo "$HOME/.deno/bin" >> "$GITHUB_PATH"
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          brew install bison flex openssl@3 postgresql@17
+          for formula in bison flex postgresql@17; do
+            echo "$(brew --prefix "$formula")/bin" >> "$GITHUB_PATH"
+          done
+
+      - name: Build libpq with static OpenSSL
+        run: |
+          set -euo pipefail
+          openssl_prefix="$(brew --prefix openssl@3)"
+          deno task build:libpq --force -o "$LIBPQ_OUTPUT" \
+            --openssl-prefix "$openssl_prefix" --static-openssl
+          cp "$openssl_prefix/LICENSE.txt" "dist/$LIBPQ_OUTPUT.OPENSSL-LICENSE.txt"
+
+      - name: Start disposable PostgreSQL with TLS
+        run: |
+          set -euo pipefail
+          test_pgdata="$RUNNER_TEMP/libpq-pgdata"
+          test_socket_dir="$RUNNER_TEMP/libpq-socket"
+          mkdir -p "$test_socket_dir"
+          initdb -D "$test_pgdata" --username=postgres --auth=trust
+          "$(brew --prefix openssl@3)/bin/openssl" req -x509 -newkey rsa:2048 -nodes \
+            -keyout "$test_pgdata/server.key" -out "$test_pgdata/server.crt" \
+            -days 1 -subj /CN=localhost
+          chmod 600 "$test_pgdata/server.key"
+          cat >> "$test_pgdata/postgresql.conf" <<CONFIG
+          listen_addresses = '127.0.0.1'
+          port = 5432
+          unix_socket_directories = '$test_socket_dir'
+          ssl = on
+          CONFIG
+          pg_ctl -D "$test_pgdata" -l "$RUNNER_TEMP/libpq-postgres.log" start -w
+
+      - name: Test local tasks and TLS without Homebrew OpenSSL libraries
+        run: |
+          set -euo pipefail
+          openssl_libdir="$(brew --prefix openssl@3)/lib"
+          hidden_libdir="$RUNNER_TEMP/libpq-hidden-openssl"
+          mv "$openssl_libdir" "$hidden_libdir"
+          trap 'mv "$hidden_libdir" "$openssl_libdir"' EXIT
+          deno task test:local
+          deno task bench:local --filter="prepared execute"
+
+      - name: Test Unix socket without Homebrew OpenSSL libraries
+        env:
+          PGURL: postgresql:///postgres?user=postgres&port=5432&host=${{ runner.temp }}/libpq-socket
+          LIBPQ_TEST_TLS: "0"
+        run: |
+          set -euo pipefail
+          openssl_libdir="$(brew --prefix openssl@3)/lib"
+          hidden_libdir="$RUNNER_TEMP/libpq-hidden-openssl"
+          mv "$openssl_libdir" "$hidden_libdir"
+          trap 'mv "$hidden_libdir" "$openssl_libdir"' EXIT
+          deno task test:local
+
+      - name: Test Homebrew libpq without TLS
+        if: ${{ inputs.test_system_libpq }}
+        env:
+          PGURL: postgresql://postgres@127.0.0.1:5432/postgres?sslmode=disable
+          LIBPQ_TEST_TLS: "0"
+        run: |
+          set -euo pipefail
+          unset DENO_LIBPQ_URL
+          export DENO_LIBPQ_PATH="$(brew --prefix postgresql@17)/lib/postgresql/libpq.dylib"
+          deno task test
+
+      - name: Test download loading without Homebrew OpenSSL libraries
+        env:
+          DENO_LIBPQ_URL: http://127.0.0.1:8000/
+        run: |
+          set -euo pipefail
+          unset DENO_LIBPQ_PATH
+          openssl_libdir="$(brew --prefix openssl@3)/lib"
+          hidden_libdir="$RUNNER_TEMP/libpq-hidden-openssl"
+          mv "$openssl_libdir" "$hidden_libdir"
+          server_pid=""
+          cleanup() {
+            if [ -n "$server_pid" ]; then kill "$server_pid" || true; fi
+            mv "$hidden_libdir" "$openssl_libdir"
+          }
+          trap cleanup EXIT
+          deno run -A jsr:@std/http/file-server dist --port 8000 &
+          server_pid=$!
+          for attempt in {1..30}; do
+            if curl -fsS "$DENO_LIBPQ_URL$LIBPQ_OUTPUT" -o /dev/null; then break; fi
+            sleep 1
+          done
+          deno task test
+
+      - name: Stop PostgreSQL
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/libpq-pgdata/postmaster.pid" ]; then
+            "$(brew --prefix postgresql@17)/bin/pg_ctl" \
+              -D "$RUNNER_TEMP/libpq-pgdata" stop -w
+          fi
+
+      - name: Upload binary artifact and OpenSSL license
+        if: ${{ inputs.upload_artifact }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ inputs.output }}
+          path: |
+            dist/${{ inputs.output }}
+            dist/${{ inputs.output }}.OPENSSL-LICENSE.txt
+          if-no-files-found: error

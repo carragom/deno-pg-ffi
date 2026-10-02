@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Build and Test ${{ matrix.output }}
+    uses: ./.github/workflows/reusable-build-test.yml
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux
+            runner: ubuntu-24.04
+            container: debian:13
+            arch: x86_64
+            output: libpq-openssl3_x86_64.so
+            run_bench: true
+          - platform: linux
+            runner: ubuntu-24.04-arm
+            container: debian:13
+            arch: aarch64
+            output: libpq-openssl3_aarch64.so
+            run_bench: false
+          - platform: macos
+            runner: macos-15
+            output: libpq_aarch64.dylib
+          - platform: macos
+            runner: macos-15-intel
+            output: libpq_x86_64.dylib
+    with:
+      platform: ${{ matrix.platform }}
+      runner: ${{ matrix.runner }}
+      container: ${{ matrix.container || '' }}
+      output: ${{ matrix.output }}
+      test_system_libpq: true
+      upload_artifact: false
+      run_bench: ${{ matrix.run_bench || false }}
