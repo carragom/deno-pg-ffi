@@ -6,7 +6,7 @@ on:
       tag:
         description: GitHub release tag to validate or publish
         required: true
-        default: v0.1.0-alpha.1
+        default: v0.1.0-alpha.2
         type: string
       publish:
         description: Publish to JSR after validation (irreversible)

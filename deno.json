@@ -1,6 +1,6 @@
 {
 	"name": "@carragom/deno-pg-ffi",
-	"version": "0.1.0-alpha.1",
+	"version": "0.1.0-alpha.2",
 	"github": "https://github.com/carragom/deno-pg-ffi",
 	"description": "Deno native bindings for PostgreSQL libpq",
 	"lock": false,

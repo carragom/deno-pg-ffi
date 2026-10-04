@@ -15,7 +15,7 @@
  * Install the package:
  *
  * ```bash
- * deno add jsr:@carragom/deno-pg-ffi@0.1.0-alpha.1
+ * deno add jsr:@carragom/deno-pg-ffi@0.1.0-alpha.2
  * ```
  *
  * Save this as `example.ts`:
