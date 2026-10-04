@@ -52,6 +52,11 @@ function deserializeNumber(text: string): number {
 	return Number(text)
 }
 
+function deserializeFloat4(text: string): number {
+	// PostgreSQL's shortest float4 text must be rounded at the source precision.
+	return Math.fround(Number(text))
+}
+
 function deserializeBigint(text: string): bigint {
 	return BigInt(text)
 }
@@ -167,26 +172,28 @@ function deserializeInstant(text: string): Temporal.Instant {
 	return Temporal.Instant.from(iso)
 }
 
-const identity = (text: string): string => text
+function deserializeText(text: string): string {
+	return text
+}
 
 /** Built-in scalar OID → result converter. Never mutated. */
 const BUILTIN_SCALARS: ReadonlyMap<number, Deserialize> = new Map([
 	[OID_BOOL, deserializeBoolean],
 	[OID_BYTEA, deserializeBytea],
-	[OID_NAME, identity],
+	[OID_NAME, deserializeText],
 	[OID_INT8, deserializeBigint],
 	[OID_INT2, deserializeNumber],
 	[OID_INT4, deserializeNumber],
-	[OID_TEXT, identity],
+	[OID_TEXT, deserializeText],
 	[OID_JSON, deserializeJson],
-	[OID_FLOAT4, deserializeNumber],
+	[OID_FLOAT4, deserializeFloat4],
 	[OID_FLOAT8, deserializeNumber],
-	[OID_BPCHAR, identity],
-	[OID_VARCHAR, identity],
+	[OID_BPCHAR, deserializeText],
+	[OID_VARCHAR, deserializeText],
 	[OID_DATE, deserializePlainDate],
 	[OID_TIMESTAMP, deserializePlainDateTime],
 	[OID_TIMESTAMPTZ, deserializeInstant],
-	[OID_NUMERIC, identity],
+	[OID_NUMERIC, deserializeText],
 	[OID_JSONB, deserializeJson],
 ])
 
@@ -296,16 +303,39 @@ const BUILTIN_ARRAYS: ReadonlyMap<number, ArrayType> = new Map([
 export class TypeRegistry {
 	#scalars = new Map<number, Deserialize>()
 	#arrays = new Map<number, ArrayType>()
+	#parseArrays: boolean
 
-	/** @internal Seed this registry with independently enabled Temporal converters. */
-	constructor(temporalTime = false, temporalInterval = false) {
-		if (temporalTime) {
-			this.registerScalar(OID_TIME, deserializePlainTime)
-			this.registerArray(1183, OID_TIME)
+	/** @internal Capture result-conversion settings without retaining the options object. */
+	constructor(options: {
+		parseJson?: boolean
+		parseArrays?: boolean
+		temporalDate?: boolean
+		temporalTimestamp?: boolean
+		temporalTimestamptz?: boolean
+		temporalTime?: boolean
+		temporalInterval?: boolean
+	} = {}) {
+		this.#parseArrays = options.parseArrays ?? true
+		if (options.parseJson === false) {
+			this.registerScalar(OID_JSON, deserializeText)
+			this.registerScalar(OID_JSONB, deserializeText)
 		}
-		if (temporalInterval) {
+		if (options.temporalDate === false) {
+			this.registerScalar(OID_DATE, deserializeText)
+		}
+		if (options.temporalTimestamp === false) {
+			this.registerScalar(OID_TIMESTAMP, deserializeText)
+		}
+		if (options.temporalTimestamptz === false) {
+			this.registerScalar(OID_TIMESTAMPTZ, deserializeText)
+		}
+		if (options.temporalTime) {
+			this.registerScalar(OID_TIME, deserializePlainTime)
+			if (this.#parseArrays) this.registerArray(1183, OID_TIME)
+		}
+		if (options.temporalInterval) {
 			this.registerScalar(OID_INTERVAL, deserializeDuration)
-			this.registerArray(1187, OID_INTERVAL)
+			if (this.#parseArrays) this.registerArray(1187, OID_INTERVAL)
 		}
 	}
 
@@ -394,12 +424,12 @@ export class TypeRegistry {
 		return builtin === undefined ? text : builtin(text)
 	}
 
-	/** Metadata when `oid` is an array, else `undefined`. */
+	/** Metadata when parsing is enabled for this array type, else `undefined`. */
 	#arrayType(oid: number): ArrayType | undefined {
 		if (this.#arrays.has(oid)) {
 			return this.#arrays.get(oid)!
 		}
-		if (BUILTIN_ARRAYS.has(oid)) {
+		if (this.#parseArrays && BUILTIN_ARRAYS.has(oid)) {
 			return BUILTIN_ARRAYS.get(oid)!
 		}
 		return undefined

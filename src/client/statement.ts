@@ -38,6 +38,7 @@ export interface PreparedClient extends AsyncDisposable {
  * if (r.rows[0].n !== 7) {
  * 	throw new Error('expected 7')
  * }
+ * console.log(r.rows[0].n) // 7
  * ```
  */
 export class Statement implements AsyncDisposable {

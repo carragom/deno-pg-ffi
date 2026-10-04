@@ -25,6 +25,7 @@ import type { ConnectOptions } from '../conninfo.ts'
  * await using statement = await client.prepare('SELECT $1::int4 AS n')
  * await using result = await statement.execute([7])
  * if (result.rows[0].n !== 7) throw new Error('expected 7')
+ * console.log(result.rows[0].n) // 7
  * ```
  */
 export class PoolClient implements PreparedClient {
@@ -126,7 +127,7 @@ export class PoolClient implements PreparedClient {
 
 /**
  * Options for {@linkcode Pool.create}.
- * Includes the `temporalTime` and `temporalInterval` result-conversion options
+ * Includes all result-conversion options
  * from {@linkcode ClientOptions}.
  * These settings apply to every connection created by the pool and are captured
  * when the pool is created; later changes to this object have no effect.
@@ -173,6 +174,7 @@ interface PoolWaiter {
  * if (left !== 1 || right !== 2) {
  * 	throw new Error('expected pooled results')
  * }
+ * console.log(left, right) // 1 2
  * ```
  */
 export class Pool implements AsyncDisposable {
@@ -197,10 +199,7 @@ export class Pool implements AsyncDisposable {
 	) {
 		this.#conninfo = conninfo
 		this.#max = max
-		this.#types = new TypeRegistry(
-			options?.temporalTime,
-			options?.temporalInterval,
-		)
+		this.#types = new TypeRegistry(options)
 		this.#temporalInterval = options?.temporalInterval ?? false
 	}
 
@@ -217,9 +216,9 @@ export class Pool implements AsyncDisposable {
 	 * or {@linkcode ConnectOptions}. Omit it to use `PGURL`, then libpq
 	 * `PG*` variables and defaults.
 	 * @param options Pool limits. `max` must be a positive
-	 * finite integer and defaults to `10`. temporalTime and temporalInterval
-	 * opt in to strict Temporal decoding, including array leaves, on every
-	 * checkout. Options are captured at creation, before any socket is opened.
+	 * finite integer and defaults to `10`. Result-conversion options
+	 * from {@linkcode ClientOptions} apply to every checkout, including array
+	 * leaves. Options are captured at creation, before any socket is opened.
 	 * @returns Pool. Caller must {@linkcode Pool.close} it
 	 * or use `await using`.
 	 * @throws {Error} When `max` is not a positive finite integer
@@ -233,6 +232,7 @@ export class Pool implements AsyncDisposable {
 	 * if (r.rows[0].n !== 1) {
 	 * 	throw new Error('expected 1')
 	 * }
+	 * console.log(r.rows[0].n) // 1
 	 * ```
 	 */
 	static create(
@@ -312,6 +312,7 @@ export class Pool implements AsyncDisposable {
 	 * if (r.rows[0].name !== 'Ada') {
 	 * 	throw new Error('expected Ada')
 	 * }
+	 * console.log(r.rows[0].name) // Ada
 	 * ```
 	 */
 	async query<T = Record<string, unknown>>(
@@ -348,6 +349,7 @@ export class Pool implements AsyncDisposable {
 	 * if (results.at(0)?.rows[0].n !== 1) {
 	 * 	throw new Error('expected 1')
 	 * }
+	 * console.log([...results].map((result) => [...result.rows]))
 	 * ```
 	 */
 	async exec(sql: string): Promise<Results> {
@@ -384,6 +386,7 @@ export class Pool implements AsyncDisposable {
 	 * if (r.rows[0].n !== 3) {
 	 * 	throw new Error('expected 3')
 	 * }
+	 * console.log(r.rows[0].n) // 3
 	 * ```
 	 *
 	 * @example Keep every transaction command on one checkout
@@ -397,6 +400,7 @@ export class Pool implements AsyncDisposable {
 	 * 	await using result = await db.query('SELECT $1::int4 AS n', [1])
 	 * 	if (result.rows[0].n !== 1) throw new Error('expected 1')
 	 * 	await using commit = await db.query('COMMIT')
+	 * 	console.log(result.rows[0].n) // 1, after committing the transaction.
 	 * } catch (error) {
 	 * 	await using rollback = await db.query('ROLLBACK')
 	 * 	throw error

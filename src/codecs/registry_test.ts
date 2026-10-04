@@ -141,8 +141,8 @@ Deno.test('an invalid delimiter does not replace an array registration', () => {
 
 Deno.test('Temporal codecs and their array pairings are opt-in and private', () => {
 	const defaults = new TypeRegistry()
-	const timeOnly = new TypeRegistry(true)
-	const intervalOnly = new TypeRegistry(false, true)
+	const timeOnly = new TypeRegistry({ temporalTime: true })
+	const intervalOnly = new TypeRegistry({ temporalInterval: true })
 	assertEquals(defaults.deserialize(1083, '24:00:00'), '24:00:00')
 	assertEquals(defaults.deserialize(1186, 'P1M-1D'), 'P1M-1D')
 	assertEquals(defaults.deserialize(1183, '{24:00:00,NULL}'), [
@@ -190,7 +190,10 @@ Deno.test('Temporal codecs and their array pairings are opt-in and private', () 
 })
 
 Deno.test('time decoder preserves microseconds and rejects end of day', () => {
-	const types = new TypeRegistry(true, true)
+	const types = new TypeRegistry({
+		temporalTime: true,
+		temporalInterval: true,
+	})
 	assertEquals(
 		(types.deserialize(1083, '12:34:56.123456') as Temporal.PlainTime)
 			.toString(),
@@ -209,7 +212,10 @@ Deno.test('time decoder preserves microseconds and rejects end of day', () => {
 })
 
 Deno.test('interval decoder preserves calendar units, large hours, and signed fractions', () => {
-	const types = new TypeRegistry(true, true)
+	const types = new TypeRegistry({
+		temporalTime: true,
+		temporalInterval: true,
+	})
 	for (
 		const [text, expected] of [
 			['PT0S', 'PT0S'],
@@ -232,7 +238,10 @@ Deno.test('interval decoder preserves calendar units, large hours, and signed fr
 })
 
 Deno.test('interval decoder rejects unsupported values with the text and cause', () => {
-	const types = new TypeRegistry(true, true)
+	const types = new TypeRegistry({
+		temporalTime: true,
+		temporalInterval: true,
+	})
 	for (
 		const text of [
 			'P1M-1D',
@@ -258,4 +267,219 @@ Deno.test('interval decoder rejects unsupported values with the text and cause',
 		)
 		assertInstanceOf(error.cause, RangeError)
 	}
+})
+
+Deno.test('date, timestamp, and timestamptz options independently control scalar and array conversion', () => {
+	const cases = [
+		{
+			key: 'temporalDate',
+			oid: 1082,
+			arrayOid: 1182,
+			text: '2026-09-19',
+			type: Temporal.PlainDate,
+		},
+		{
+			key: 'temporalTimestamp',
+			oid: 1114,
+			arrayOid: 1115,
+			text: '2026-09-19 12:00:00',
+			type: Temporal.PlainDateTime,
+		},
+		{
+			key: 'temporalTimestamptz',
+			oid: 1184,
+			arrayOid: 1185,
+			text: '2026-09-19 12:00:00+00',
+			type: Temporal.Instant,
+		},
+	] as const
+	for (let mask = 0; mask < 8; mask++) {
+		const options = {
+			temporalDate: Boolean(mask & 1),
+			temporalTimestamp: Boolean(mask & 2),
+			temporalTimestamptz: Boolean(mask & 4),
+		}
+		const types = new TypeRegistry(options)
+		for (const { key, oid, arrayOid, text, type } of cases) {
+			const value = types.deserialize(oid, text)
+			const array = types.deserialize(
+				arrayOid,
+				`{"${text}",NULL}`,
+			) as unknown[]
+			if (options[key]) {
+				assertInstanceOf(value, type)
+				assertInstanceOf(array[0], type)
+			} else {
+				assertEquals(value, text)
+				assertEquals(array[0], text)
+			}
+			assertEquals(array[1], null)
+		}
+	}
+})
+
+Deno.test('disabled date converters preserve unsupported text and allow private scalar overrides', () => {
+	const defaults = new TypeRegistry()
+	const text = new TypeRegistry({
+		temporalDate: false,
+		temporalTimestamp: false,
+		temporalTimestamptz: false,
+	})
+	for (
+		const [oid, arrayOid, values] of [
+			[1082, 1182, [
+				'infinity',
+				'-infinity',
+				'0001-01-01 BC',
+				'10000-01-01',
+				'500000-01-01',
+			]],
+			[1114, 1115, [
+				'infinity',
+				'-infinity',
+				'0001-01-01 00:00:00 BC',
+				'10000-01-01 00:00:00',
+				'280000-01-01 00:00:00',
+			]],
+			[1184, 1185, [
+				'infinity',
+				'-infinity',
+				'0001-01-01 00:00:00+00 BC',
+				'10000-01-01 00:00:00+00',
+				'280000-01-01 00:00:00+00',
+			]],
+		] as const
+	) {
+		for (const value of values) {
+			assertThrows(() => defaults.deserialize(oid, value), RangeError)
+			assertEquals(text.deserialize(oid, value), value)
+		}
+		assertEquals(
+			text.deserialize(
+				arrayOid,
+				`{${values.map((value) => `"${value}"`).join(',')},NULL}`,
+			),
+			[...values, null],
+		)
+	}
+	text.registerScalar(1082, (value) => `date:${value}`)
+	assertEquals(text.deserialize(1182, '{infinity,NULL}'), [
+		'date:infinity',
+		null,
+	])
+	assertInstanceOf(
+		defaults.deserialize(1082, '2026-09-19'),
+		Temporal.PlainDate,
+	)
+})
+
+Deno.test('JSON and array opt-outs are independent and keep explicit converters private', () => {
+	for (const parseJson of [false, true]) {
+		for (const parseArrays of [false, true]) {
+			const options = { parseJson, parseArrays }
+			const types = new TypeRegistry(options)
+			options.parseJson = !parseJson
+			options.parseArrays = !parseArrays
+			for (const [oid, arrayOid] of [[114, 199], [3802, 3807]]) {
+				assertEquals(
+					types.deserialize(oid, '9007199254740993'),
+					parseJson ? 9007199254740992 : '9007199254740993',
+				)
+				assertEquals(
+					types.deserialize(oid, 'null'),
+					parseJson ? null : 'null',
+				)
+				assertEquals(
+					types.deserialize(arrayOid, '{"null",NULL}'),
+					parseArrays
+						? [parseJson ? null : 'null', null]
+						: '{"null",NULL}',
+				)
+				types.registerScalar(oid, (value) => `json:${value}`)
+				assertEquals(types.deserialize(oid, 'null'), 'json:null')
+				assertEquals(
+					types.deserialize(arrayOid, '{"null",NULL}'),
+					parseArrays ? ['json:null', null] : '{"null",NULL}',
+				)
+			}
+			assertEquals(
+				types.deserialize(1007, '[5:6]={1,2}'),
+				parseArrays ? [1, 2] : '[5:6]={1,2}',
+			)
+		}
+	}
+	assertEquals(new TypeRegistry().deserialize(114, 'null'), null)
+	assertEquals(new TypeRegistry().deserialize(1007, '{1,2}'), [1, 2])
+})
+
+Deno.test('disabled array parsing bypasses element converters until explicitly registered', () => {
+	const types = new TypeRegistry({
+		parseArrays: false,
+		temporalTime: true,
+		temporalInterval: true,
+	})
+	types.registerScalar(1082, () => {
+		throw new Error('element converter must not run')
+	})
+	assertEquals(
+		types.deserialize(1182, '[0:1]={infinity,NULL}'),
+		'[0:1]={infinity,NULL}',
+	)
+	assertEquals(types.deserialize(1183, '{24:00:00,NULL}'), '{24:00:00,NULL}')
+	assertEquals(types.deserialize(1187, '{infinity,NULL}'), '{infinity,NULL}')
+	assertEquals(
+		types.deserialize(1020, '{(1,1),(0,0);NULL}'),
+		'{(1,1),(0,0);NULL}',
+	)
+	assertThrows(
+		() => types.deserialize(1082, '2026-09-19'),
+		Error,
+		'element converter must not run',
+	)
+	assertThrows(() => types.registerScalar(1007, (value) => value), TypeError)
+	types.registerScalar(23, (value) => `int:${value}`)
+	types.registerArray(1007, 23)
+	assertEquals(types.deserialize(1007, '[5:6]={1,2}'), ['int:1', 'int:2'])
+	types.registerScalar(OID_CUSTOM_SCALAR, (value) => value.toUpperCase())
+	types.registerArray(OID_CUSTOM_ARRAY, OID_CUSTOM_SCALAR)
+	assertEquals(types.deserialize(OID_CUSTOM_ARRAY, '{a,NULL}'), ['A', null])
+})
+
+Deno.test('float4 reconstructs source precision and preserves boundary and special values', () => {
+	const types = new TypeRegistry()
+	for (
+		const [text, expected] of [
+			['0.1', 0.10000000149011612],
+			['-0.1', -0.10000000149011612],
+			['0', 0],
+			['-0', -0],
+			['1e-45', 1.401298464324817e-45],
+			['1.1754944e-38', 1.1754943508222875e-38],
+			['3.4028235e+38', 3.4028234663852886e38],
+			['NaN', NaN],
+			['Infinity', Infinity],
+			['-Infinity', -Infinity],
+		] as const
+	) {
+		assertEquals(
+			Object.is(types.deserialize(700, text), expected),
+			true,
+			text,
+		)
+	}
+	assertEquals(types.deserialize(701, '0.1'), 0.1)
+})
+
+Deno.test('float4 arrays use source precision while opt-outs and custom converters take precedence', () => {
+	const types = new TypeRegistry()
+	assertEquals(types.deserialize(1021, '{{0.1,NULL},{-0.1,1e-45}}'), [
+		[0.10000000149011612, null],
+		[-0.10000000149011612, 1.401298464324817e-45],
+	])
+	const text = new TypeRegistry({ parseArrays: false })
+	assertEquals(text.deserialize(1021, '{0.1,NULL}'), '{0.1,NULL}')
+	types.registerScalar(700, (value) => `float4:${value}`)
+	assertEquals(types.deserialize(700, '0.1'), 'float4:0.1')
+	assertEquals(types.deserialize(1021, '{0.1,NULL}'), ['float4:0.1', null])
+	assertEquals(new TypeRegistry().deserialize(700, '0.1'), 0.10000000149011612)
 })

@@ -106,6 +106,7 @@ function rowCountFromTag(tag: string): number | undefined {
  * if (r.rows[0].n !== 1 || r.rows.at(-1)?.n !== 2) {
  * 	throw new Error('unexpected rows')
  * }
+ * console.log([...r.rows]) // [ { n: 1 }, { n: 2 } ]
  * ```
  */
 export interface Rows<T> extends Iterable<T> {
@@ -203,6 +204,7 @@ class ResultRows<T> implements Rows<T> {
  * if (r.command !== 'SELECT' || row.n !== 1) {
  * 	throw new Error('unexpected result')
  * }
+ * console.log(row.n) // 1, even after the result and connection close.
  * ```
  */
 export class Result<T = Record<string, unknown>> implements Disposable {
@@ -288,6 +290,7 @@ export class Result<T = Record<string, unknown>> implements Disposable {
  * if (results.length !== 2 || results[1].rows[0].n !== 2) {
  * 	throw new Error('expected two results')
  * }
+ * console.log([...results].map((result) => [...result.rows]))
  * ```
  */
 export class Results implements Iterable<Result>, Disposable {

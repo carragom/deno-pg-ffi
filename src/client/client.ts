@@ -36,20 +36,65 @@ const INTERVAL_STYLE_SQL = 'SET IntervalStyle = iso_8601'
 
 /**
  * Driver options for {@linkcode Client.connect} and {@linkcode Pool.create}.
- * Both options default to `false`. They enable strict result conversion for
- * `time` and `interval`, including array elements; they do not change accepted
- * parameter values. SQL NULL remains null.
+ * JSON, array, date, timestamp, and timestamptz converters default to enabled;
+ * time and interval converters default to disabled. Scalar options also apply
+ * to array elements when array parsing is enabled. Disabled converters return
+ * PostgreSQL text.
+ * Options do not change accepted parameters; SQL NULL remains null.
  *
  * Options are captured when the client or pool is created. Conversion happens
  * when a row is first read, so a successful query can still produce a RangeError
  * during row access. Unsupported values are never normalized or replaced with
- * strings; errors identify the type and text and retain the underlying cause.
- * Custom result converters take precedence over these defaults.
- * With an option enabled, its array type is already paired with its scalar
- * converter. Otherwise a custom scalar override also needs an explicit array
- * pairing through {@linkcode Client.registerArray}.
+ * strings. Custom result converters take precedence over these defaults.
+ * With array parsing enabled, built-in date, timestamp, and timestamptz arrays
+ * use their scalar converter
+ * even when it is overridden. Time and interval arrays are paired with their
+ * scalar converters when the corresponding option is enabled; otherwise a
+ * custom scalar override also needs an explicit array pairing through
+ * {@linkcode Client.registerArray}.
  */
 export interface ClientOptions {
+	/**
+	 * Parse `json` and `jsonb` results with JSON.parse. Default `true`.
+	 * Set `false` to keep PostgreSQL JSON text, preserving number precision
+	 * and distinguishing JSON null (`'null'`) from SQL NULL (`null`). Also
+	 * applies to JSON array elements when `parseArrays` is enabled.
+	 * Does not affect {@linkcode json} parameters. Custom scalar converters
+	 * take precedence. Scalar OIDs are 114 and 3802.
+	 */
+	parseJson?: boolean
+	/**
+	 * Parse built-in PostgreSQL arrays into nested JavaScript arrays. Default `true`.
+	 * Set `false` to keep the entire PostgreSQL array text, including lower
+	 * bounds, delimiters, and NULL tokens; element converters are not called.
+	 * SQL NULL still becomes null. Does not affect {@linkcode array} parameters.
+	 * An explicit {@linkcode Client.registerArray} or {@linkcode Pool.registerArray}
+	 * enables parsing for that array type even when this option is disabled.
+	 */
+	parseArrays?: boolean
+	/**
+	 * Decode `date` and `date[]` as Temporal.PlainDate. Default `true`.
+	 * Set `false` to keep PostgreSQL text, including infinity and BC notation.
+	 * With conversion enabled, infinity, BC notation, years above 9999, and
+	 * values outside Temporal's range throw RangeError during row access.
+	 * Does not affect accepted parameters. Scalar and array OIDs are 1082 and 1182.
+	 */
+	temporalDate?: boolean
+	/**
+	 * Decode `timestamp` and `timestamp[]` as Temporal.PlainDateTime. Default `true`.
+	 * Set `false` to keep PostgreSQL text. Has the same date-format and range
+	 * limits as `temporalDate`; failures throw RangeError during row access.
+	 * Does not affect accepted parameters. Scalar and array OIDs are 1114 and 1115.
+	 */
+	temporalTimestamp?: boolean
+	/**
+	 * Decode `timestamptz` and `timestamptz[]` as Temporal.Instant. Default `true`.
+	 * Set `false` to keep PostgreSQL text, including the session's UTC offset.
+	 * Has the same date-format and range limits as `temporalDate`; failures
+	 * throw RangeError during row access. Does not affect accepted parameters.
+	 * Scalar and array OIDs are 1184 and 1185.
+	 */
+	temporalTimestamptz?: boolean
 	/**
 	 * Decode `time` and `time[]` as Temporal.PlainTime. Default `false` keeps
 	 * strings. `24:00:00` throws RangeError during lazy row access; it is not
@@ -102,6 +147,7 @@ const connRegistry = new FinalizationRegistry<PGconn>((conn) => {
  * if (r.rows.at(0)?.n !== 1) {
  * 	throw new Error('expected 1')
  * }
+ * console.log(r.rows[0].n) // 1
  * ```
  */
 export class Client implements PreparedClient {
@@ -179,6 +225,8 @@ export class Client implements PreparedClient {
 	 * if (text.rows[0].closing !== '24:00:00') {
 	 * 	throw new Error('expected original text')
 	 * }
+	 * console.log(result.rows[0].t.toString(), result.rows[0].i.toString())
+	 * console.log(text.rows[0].closing) // 24:00:00
 	 * ```
 	 */
 	static connect(
@@ -187,7 +235,7 @@ export class Client implements PreparedClient {
 	): Promise<Client> {
 		return Client.connectWithRegistry(
 			conninfo,
-			new TypeRegistry(options?.temporalTime, options?.temporalInterval),
+			new TypeRegistry(options),
 			options?.temporalInterval ?? false,
 		)
 	}
@@ -239,6 +287,7 @@ export class Client implements PreparedClient {
 	 * if (r.rows[0].id !== 'A4A70900-A4A7-4A4A-A4A7-A4A70900A4A7') {
 	 * 	throw new Error('expected uppercased uuid')
 	 * }
+	 * console.log(r.rows[0].id)
 	 * ```
 	 */
 	registerScalar(oid: number, deserialize: Deserialize): void {
@@ -277,6 +326,7 @@ export class Client implements PreparedClient {
 	 * if (r.rows[0].ids[0] !== 'A4A70900-A4A7-4A4A-A4A7-A4A70900A4A7') {
 	 * 	throw new Error('expected uppercased uuid element')
 	 * }
+	 * console.log(r.rows[0].ids)
 	 * ```
 	 */
 	registerArray(
@@ -313,6 +363,7 @@ export class Client implements PreparedClient {
 	 * if (r.rows[0].name !== 'Ada') {
 	 * 	throw new Error('expected Ada')
 	 * }
+	 * console.log(r.rows[0].name) // Ada
 	 * ```
 	 */
 	async query<T = Record<string, unknown>>(
@@ -360,6 +411,7 @@ export class Client implements PreparedClient {
 	 * if (results.at(0)?.rows[0].n !== 1) {
 	 * 	throw new Error('expected 1')
 	 * }
+	 * console.log([...results].map((result) => [...result.rows]))
 	 * ```
 	 */
 	async exec(sql: string): Promise<Results> {
@@ -405,6 +457,7 @@ export class Client implements PreparedClient {
 	 * if (r.rows[0].n !== 3) {
 	 * 	throw new Error('expected 3')
 	 * }
+	 * console.log(r.rows[0].n) // 3
 	 * ```
 	 */
 	async prepare(sql: string, name: string = ''): Promise<Statement> {

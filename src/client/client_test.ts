@@ -863,3 +863,122 @@ Deno.test('libpq barrel exports the raw table and enums', async () => {
 	assertEquals('clear' in raw, false)
 	assertEquals('ffi' in raw, false)
 })
+
+Deno.test('Client captures independent date conversion options without changing Temporal parameters', async () => {
+	for (let mask = 0; mask < 8; mask++) {
+		const flags = [Boolean(mask & 1), Boolean(mask & 2), Boolean(mask & 4)]
+		const options = {
+			temporalDate: flags[0],
+			temporalTimestamp: flags[1],
+			temporalTimestamptz: flags[2],
+		}
+		await using db = await Client.connect(undefined, options)
+		options.temporalDate = !options.temporalDate
+		options.temporalTimestamp = !options.temporalTimestamp
+		options.temporalTimestamptz = !options.temporalTimestamptz
+		await using result = await db.query(
+			`SELECT $1::date AS d, $2::timestamp AS ts, $3::timestamptz AS at,
+			$1::date::text AS d_text, $2::timestamp::text AS ts_text,
+			$3::timestamptz::text AS at_text,
+			ARRAY[$1::date, NULL] AS dates,
+			ARRAY[$2::timestamp, NULL] AS timestamps,
+			ARRAY[$3::timestamptz, NULL] AS instants`,
+			[
+				Temporal.PlainDate.from('2026-09-19'),
+				Temporal.PlainDateTime.from('2026-09-19T12:00:00'),
+				Temporal.Instant.from('2026-09-19T12:00:00Z'),
+			],
+		)
+		const row = result.rows[0]
+		for (
+			const [index, scalar, array, type] of [
+				[0, 'd', 'dates', Temporal.PlainDate],
+				[1, 'ts', 'timestamps', Temporal.PlainDateTime],
+				[2, 'at', 'instants', Temporal.Instant],
+			] as const
+		) {
+			const values = row[array] as unknown[]
+			if (flags[index]) {
+				assertInstanceOf(row[scalar], type)
+				assertInstanceOf(values[0], type)
+			} else {
+				assertEquals(row[scalar], row[`${scalar}_text`])
+				assertEquals(values[0], row[`${scalar}_text`])
+			}
+			assertEquals(values[1], null)
+		}
+	}
+})
+
+Deno.test('Client JSON and array options preserve text independently without changing parameters', async () => {
+	for (const parseJson of [false, true]) {
+		for (const parseArrays of [false, true]) {
+			const options = { parseJson, parseArrays }
+			await using db = await Client.connect(undefined, options)
+			options.parseJson = !parseJson
+			options.parseArrays = !parseArrays
+			await using result = await db.query(
+				`SELECT
+				'9007199254740993'::json AS j, '9007199254740993'::jsonb AS jb,
+				'null'::json AS j_null, NULL::json AS sql_null,
+				ARRAY['null'::json, NULL] AS jsons,
+				ARRAY['null'::jsonb, NULL] AS jsonbs,
+				'[5:6]={1,2}'::int4[] AS shifted,
+				$1::jsonb AS json_param, $1::jsonb::text AS json_param_text,
+				$2::int4[] AS array_param`,
+				[json({ n: 7 }), array([1, 2])],
+			)
+			const row = result.rows[0]
+			assertEquals(row.j, parseJson ? 9007199254740992 : '9007199254740993')
+			assertEquals(row.jb, row.j)
+			assertEquals(row.j_null, parseJson ? null : 'null')
+			assertEquals(row.sql_null, null)
+			assertEquals(
+				row.jsons,
+				parseArrays ? [parseJson ? null : 'null', null] : '{"null",NULL}',
+			)
+			assertEquals(row.jsonbs, row.jsons)
+			assertEquals(row.shifted, parseArrays ? [1, 2] : '[5:6]={1,2}')
+			assertEquals(
+				row.json_param,
+				parseJson ? { n: 7 } : row.json_param_text,
+			)
+			assertEquals(row.array_param, parseArrays ? [1, 2] : '{1,2}')
+		}
+	}
+})
+
+Deno.test('Client float4 scalars and arrays match PostgreSQL float8 promotion', async () => {
+	await using db = await Client.connect()
+	await using result = await db.query<{
+		value: number
+		promoted: number
+		values: (number | null)[]
+		text: string
+	}>(
+		`SELECT value AS value, value::float8 AS promoted,
+		ARRAY[value, NULL] AS values, value::text AS text
+		FROM (SELECT input::float4 AS value
+			FROM unnest($1::text[]) AS samples(input)) AS floats`,
+		[
+			array([
+				'0.1',
+				'-0.1',
+				'0',
+				'-0',
+				'1.401298464324817e-45',
+				'1.1754943508222875e-38',
+				'3.4028234663852886e38',
+				'NaN',
+				'Infinity',
+				'-Infinity',
+			]),
+		],
+	)
+	assertEquals(result.rows.length, 10)
+	for (const row of result.rows) {
+		assert(Object.is(row.value, row.promoted), row.text)
+		assert(Object.is(row.values[0], row.promoted), row.text)
+		assertEquals(row.values[1], null)
+	}
+})

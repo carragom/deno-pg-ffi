@@ -6,7 +6,7 @@ A safe, fast PostgreSQL client built on libpq, with parameterized queries,
 pooling, prepared statements, notifications, and automatic resource disposal.
 The `/libpq` entry point exposes raw C functions for direct access to libpq.
 
-Requires **Deno 2.9+** and **libpq 17+**. The package is in alpha. Packaged
+Requires **Deno 2.7+** and **libpq 17+**. The package is in alpha. Packaged
 binaries support Linux and macOS on x86_64 and aarch64; a compatible local
 library can also be supplied.
 

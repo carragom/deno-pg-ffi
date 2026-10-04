@@ -122,7 +122,9 @@ export function serializeDuration(value: unknown): string {
  * not send a type OID.
  *
  * `json(null)` is the four characters `null`. A bare `null` parameter is
- * SQL `NULL`. `json(undefined)` throws.
+ * SQL `NULL`. `json(undefined)` throws. As with `JSON.stringify`, non-finite
+ * numbers become JSON null, undefined object properties are omitted, and
+ * undefined array elements become JSON null. Bigints and cyclic objects throw.
  *
  * @param value A JSON value.
  * @returns JSON text for a parameter; JSON null and SQL NULL both receive as null.
@@ -139,6 +141,8 @@ export function serializeDuration(value: unknown): string {
  * if (json(null) !== 'null') {
  * 	throw new Error('expected JSON null')
  * }
+ * console.log(json({ a: 1 })) // {"a":1}
+ * console.log(json(null)) // null
  * ```
  */
 export function json(value: unknown): string {
@@ -190,6 +194,9 @@ export function json(value: unknown): string {
  * if (array([[1, 2], [3, 4]]) !== '{{1,2},{3,4}}') {
  * 	throw new Error('expected nested braces')
  * }
+ * console.log(array([1, null, 3])) // {1,NULL,3}
+ * console.log(array(['NULL', ''])) // {"NULL",""}
+ * console.log(array([[1, 2], [3, 4]])) // {{1,2},{3,4}}
  * ```
  */
 export function array(value: unknown[]): string {

@@ -7,10 +7,17 @@ package, tasks, and tooling settings.
 
 ## Getting started
 
-Use Deno 2.9+, a reachable PostgreSQL database, and libpq 17+. To build libpq,
-install a C toolchain, `make`, `bison`, `flex`, Perl, and OpenSSL development
-headers/libraries. Linux and macOS builds are supported; Windows builds are not
-implemented.
+Use Deno 2.9+ for contributor tooling, a reachable PostgreSQL database, and
+libpq 17+. The package itself supports Deno 2.7+: FFI stabilized in
+[Deno 2.0](https://deno.com/blog/v2.0-release-candidate#stable-apis), but its
+native Temporal converters require
+[Deno 2.7](https://deno.com/blog/v2.7#temporal-api-stabilized). The test suite
+uses newer test hooks, and CI pins its Deno version in
+[the setup action](.github/actions/setup-deno/action.yml).
+
+To build libpq, install a C toolchain, `make`, `bison`, `flex`, Perl, and
+OpenSSL development headers/libraries. Linux and macOS builds are supported;
+Windows builds are not implemented.
 
 ```bash
 git clone --recurse-submodules https://github.com/carragom/deno-pg-ffi.git
@@ -257,9 +264,17 @@ materialized rows stay cached.
 Result converters depend on `DateStyle = 'ISO, YMD'` and, when enabled,
 `IntervalStyle = iso_8601`. PostgreSQL interval fields have independent signs;
 keep calendar months/days separate from elapsed time and preserve signed
-fractions. Unsupported Temporal values throw during lazy row access. Result
-converter details and user options are documented on the managed API; converter
-tests live beside their implementations.
+fractions. Unsupported values throw during lazy row access when their Temporal
+converter is enabled. Date/timestamp/timestamptz converters default to enabled
+and can be independently disabled to preserve PostgreSQL text, including array
+leaves. Registries capture these options at creation and retain them across pool
+reset; explicit custom converters take precedence. Result converter details and
+user options are documented on the managed API; converter tests live beside
+their implementations.
+
+Float4 results round parsed text with `Math.fround` to reconstruct the stored
+32-bit value in a JavaScript number, including array leaves. Float8 and integer
+result converters continue to use `Number` or `BigInt` as appropriate.
 
 ## Adding an FFI symbol
 

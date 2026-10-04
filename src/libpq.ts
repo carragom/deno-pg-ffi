@@ -80,6 +80,7 @@
  *     if (rows[0].answer !== '42' || rows[0].missing !== null) {
  *       throw new Error('Unexpected raw query result')
  *     }
+ *     console.log(rows) // [ { answer: '42', missing: null } ]
  *   } finally {
  *     libpq.PQclear(result)
  *   }

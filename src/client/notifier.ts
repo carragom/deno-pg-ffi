@@ -150,6 +150,7 @@ export class Notifier implements AsyncDisposable {
 	 * if ((await got.promise) !== 'hi') {
 	 * 	throw new Error('expected notify')
 	 * }
+	 * console.log(await got.promise) // hi
 	 * ```
 	 */
 	static async connect(

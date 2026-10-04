@@ -6,6 +6,7 @@ import {
 } from '@std/assert'
 import { deadline } from '@std/async'
 import { Pool, PoolClient } from './pool.ts'
+import { Client } from './client.ts'
 import { PostgresError } from './error.ts'
 import { PGURL } from '../constants.ts'
 import { conninfoParamsFromUrl } from '../conninfo.ts'
@@ -448,4 +449,90 @@ Deno.test('Pool Temporal options apply to simultaneous connections and survive r
 		"SELECT ARRAY[interval '1 month -1 day'] AS intervals",
 	)
 	assertEquals(overridden.rows[0].intervals, ['P1M-1D'])
+})
+
+Deno.test('Pool date conversion opt-outs survive simultaneous checkouts and reset', async () => {
+	const options = {
+		max: 2,
+		temporalDate: false,
+		temporalTimestamp: false,
+		temporalTimestamptz: false,
+	}
+	await using pool = await Pool.create(undefined, options)
+	options.temporalDate = true
+	options.temporalTimestamp = true
+	options.temporalTimestamptz = true
+	const sql = `SELECT date '0001-01-01 BC' AS d,
+		timestamp '10000-01-01 00:00:00' AS ts,
+		timestamptz '-infinity' AS at,
+		ARRAY[date 'infinity', NULL] AS dates,
+		ARRAY[timestamp 'infinity', NULL] AS timestamps,
+		ARRAY[timestamptz 'infinity', NULL] AS instants`
+	const expected = {
+		d: '0001-01-01 BC',
+		ts: '10000-01-01 00:00:00',
+		at: '-infinity',
+		dates: ['infinity', null],
+		timestamps: ['infinity', null],
+		instants: ['infinity', null],
+	}
+	{
+		await using first = await pool.acquire()
+		await using second = await pool.acquire()
+		for (const db of [first, second]) {
+			await using result = await db.query(sql)
+			assertEquals(result.rows[0], expected)
+			await using _settings = await db.exec(
+				"SET DateStyle = 'SQL, DMY'; BEGIN",
+			)
+		}
+	}
+	for (let i = 0; i < 2; i++) {
+		await using result = await pool.query(sql)
+		assertEquals(result.rows[0], expected)
+	}
+	pool.registerScalar(1082, (value) => `date:${value}`)
+	await using overridden = await pool.query(
+		"SELECT ARRAY[date 'infinity'] AS dates",
+	)
+	assertEquals(overridden.rows[0].dates, ['date:infinity'])
+})
+
+Deno.test('Pool JSON and array opt-outs survive reset and honor shared explicit overrides', async () => {
+	const options = { max: 2, parseJson: false, parseArrays: false }
+	await using pool = await Pool.create(undefined, options)
+	options.parseJson = true
+	options.parseArrays = true
+	const sql = `SELECT '9007199254740993'::json AS j,
+		'9007199254740993'::jsonb AS jb, '[5:6]={1,2}'::int4[] AS a,
+		NULL::json AS missing`
+	const expected = {
+		j: '9007199254740993',
+		jb: '9007199254740993',
+		a: '[5:6]={1,2}',
+		missing: null,
+	}
+	{
+		await using first = await pool.acquire()
+		await using second = await pool.acquire()
+		for (const db of [first, second]) {
+			await using result = await db.query(sql)
+			assertEquals(result.rows[0], expected)
+		}
+	}
+	await using after = await pool.query(sql)
+	assertEquals(after.rows[0], expected)
+	pool.registerScalar(114, (value) => `json:${value}`)
+	pool.registerScalar(23, (value) => `int:${value}`)
+	pool.registerArray(1007, 23)
+	await using overridden = await pool.query(sql)
+	assertEquals(overridden.rows[0], {
+		...expected,
+		j: 'json:9007199254740993',
+		a: ['int:1', 'int:2'],
+	})
+	await using defaults = await Client.connect()
+	await using normal = await defaults.query(sql)
+	assertEquals(normal.rows[0].j, 9007199254740992)
+	assertEquals(normal.rows[0].a, [1, 2])
 })

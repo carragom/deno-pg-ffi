@@ -26,6 +26,8 @@ import {
  * 	if (!(error instanceof PostgresError) || error.sqlstate !== '22012') {
  * 		throw error
  * 	}
+ * 	console.log(error.sqlstate) // 22012
+ * 	console.log(error.message)
  * }
  * ```
  */

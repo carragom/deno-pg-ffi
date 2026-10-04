@@ -4,8 +4,8 @@ deno-pg-ffi provides Deno native bindings for PostgreSQL libpq. Read
 [README.md](README.md) for the project overview, public JSDoc in
 [src/mod.ts](src/mod.ts) and [src/libpq.ts](src/libpq.ts) for API contracts, and
 [DEVEL.md](DEVEL.md) for contributor procedures. `deno.json` is the source of
-truth for exports, tasks, formatting, and linting. Requires Deno 2.9+ and libpq
-17+.
+truth for exports, tasks, formatting, and linting. The package requires Deno
+2.7+ (native Temporal) and libpq 17+; contributor tooling requires Deno 2.9+.
 
 ## Native and protocol invariants
 
