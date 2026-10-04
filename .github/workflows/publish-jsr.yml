@@ -230,6 +230,6 @@ jobs:
           unset DENO_LIBPQ_PATH DENO_LIBPQ_URL
           cd "$RUNNER_TEMP"
           specifier="jsr:@carragom/deno-pg-ffi@$PACKAGE_VERSION"
-          deno run --no-config --no-lock \
+          deno run --no-config --no-lock --minimum-dependency-age=0 \
             --allow-ffi --allow-env --allow-net --allow-read --allow-write \
             "$GITHUB_WORKSPACE/scripts/smoke-package.ts" "$specifier" "$specifier/libpq"

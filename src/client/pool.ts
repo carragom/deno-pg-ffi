@@ -7,7 +7,7 @@ import { type Deserialize, TypeRegistry } from '../codecs/registry.ts'
 import type { ConnectOptions } from '../conninfo.ts'
 
 /**
- * Pool checkout. {@linkcode PoolClient.close} / `await using` releases the
+ * A connection checked out from a pool. {@linkcode PoolClient.close} / `await using` releases the
  * inner {@linkcode Client} after `DISCARD ALL` and restoring
  * `DateStyle` and, when enabled, Temporal interval formatting. It does not
  * call `PQfinish` on a reusable connection.
@@ -15,6 +15,17 @@ import type { ConnectOptions } from '../conninfo.ts'
  * Use {@linkcode Pool.acquire} for session-scoped work. One command can be active
  * on a checkout at a time; calls after release reject. Dispose statements before
  * this checkout, and the checkout before the pool. Results survive release.
+ *
+ * @example Keep one connection for a prepared statement
+ * ```ts
+ * import { Pool } from '@carragom/deno-pg-ffi'
+ *
+ * await using pool = await Pool.create()
+ * await using client = await pool.acquire()
+ * await using statement = await client.prepare('SELECT $1::int4 AS n')
+ * await using result = await statement.execute([7])
+ * if (result.rows[0].n !== 7) throw new Error('expected 7')
+ * ```
  */
 export class PoolClient implements PreparedClient {
 	#inner: Client
@@ -84,7 +95,7 @@ export class PoolClient implements PreparedClient {
 		await this.#release(this.#inner)
 	}
 
-	/** Dispose this resource by awaiting {@linkcode close}. */
+	/** Dispose this resource by awaiting {@linkcode PoolClient.close}. */
 	[Symbol.asyncDispose](): Promise<void> {
 		return this.close()
 	}
@@ -113,7 +124,13 @@ export class PoolClient implements PreparedClient {
 	}
 }
 
-/** Options for {@linkcode Pool.create}. */
+/**
+ * Options for {@linkcode Pool.create}.
+ * Includes the `temporalTime` and `temporalInterval` result-conversion options
+ * from {@linkcode ClientOptions}.
+ * These settings apply to every connection created by the pool and are captured
+ * when the pool is created; later changes to this object have no effect.
+ */
 export interface PoolOptions extends ClientOptions {
 	/**
 	 * Maximum number of live connections. Default `10`. Must be a positive
@@ -128,7 +145,7 @@ interface PoolWaiter {
 }
 
 /**
- * In-process connection pool. Construct only through {@linkcode Pool.create}.
+ * A connection pool for concurrent queries. Create it through {@linkcode Pool.create}.
  *
  * Connections open lazily up to {@linkcode PoolOptions.max}. When saturated,
  * commands and acquisitions wait for a slot without an acquisition timeout.
@@ -143,7 +160,7 @@ interface PoolWaiter {
  *
  * @example
  * ```ts
- * import { Pool } from '../mod.ts'
+ * import { Pool } from '@carragom/deno-pg-ffi'
  *
  * await using pool = await Pool.create()
  * const read = async (n: number): Promise<number> => {
@@ -209,7 +226,7 @@ export class Pool implements AsyncDisposable {
 	 *
 	 * @example
 	 * ```ts
-	 * import { Pool } from '../mod.ts'
+	 * import { Pool } from '@carragom/deno-pg-ffi'
 	 *
 	 * await using pool = await Pool.create(undefined, { max: 2 })
 	 * await using r = await pool.query<{ n: number }>('SELECT 1::int4 AS n')
@@ -285,7 +302,7 @@ export class Pool implements AsyncDisposable {
 	 *
 	 * @example
 	 * ```ts
-	 * import { Pool } from '../mod.ts'
+	 * import { Pool } from '@carragom/deno-pg-ffi'
 	 *
 	 * await using pool = await Pool.create()
 	 * await using r = await pool.query<{ name: string }>(
@@ -322,7 +339,7 @@ export class Pool implements AsyncDisposable {
 	 *
 	 * @example
 	 * ```ts
-	 * import { Pool } from '../mod.ts'
+	 * import { Pool } from '@carragom/deno-pg-ffi'
 	 *
 	 * await using pool = await Pool.create()
 	 * await using results = await pool.exec(
@@ -358,7 +375,7 @@ export class Pool implements AsyncDisposable {
 	 *
 	 * @example
 	 * ```ts
-	 * import { Pool } from '../mod.ts'
+	 * import { Pool } from '@carragom/deno-pg-ffi'
 	 *
 	 * await using pool = await Pool.create()
 	 * await using db = await pool.acquire()
@@ -371,7 +388,7 @@ export class Pool implements AsyncDisposable {
 	 *
 	 * @example Keep every transaction command on one checkout
 	 * ```ts
-	 * import { Pool } from '../mod.ts'
+	 * import { Pool } from '@carragom/deno-pg-ffi'
 	 *
 	 * await using pool = await Pool.create()
 	 * await using db = await pool.acquire()
@@ -401,7 +418,7 @@ export class Pool implements AsyncDisposable {
 	 *
 	 * @example
 	 * ```ts
-	 * import { Pool } from '../mod.ts'
+	 * import { Pool } from '@carragom/deno-pg-ffi'
 	 *
 	 * const pool = await Pool.create()
 	 * await pool.close()
@@ -430,7 +447,7 @@ export class Pool implements AsyncDisposable {
 		await this.#closeDone
 	}
 
-	/** Dispose this resource by awaiting {@linkcode close}. */
+	/** Dispose this resource by awaiting {@linkcode Pool.close}. */
 	[Symbol.asyncDispose](): Promise<void> {
 		return this.close()
 	}

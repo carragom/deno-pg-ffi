@@ -1,10 +1,11 @@
 # Agents
 
 deno-pg-ffi provides Deno native bindings for PostgreSQL libpq. Read
-[README.md](README.md) for onboarding, public JSDoc in [src/mod.ts](src/mod.ts)
-and [src/libpq.ts](src/libpq.ts) for API contracts, and [DEVEL.md](DEVEL.md) for
-contributor procedures. `deno.json` is the source of truth for exports, tasks,
-formatting, and linting. Requires Deno 2.9+ and libpq 17+.
+[README.md](README.md) for the project overview, public JSDoc in
+[src/mod.ts](src/mod.ts) and [src/libpq.ts](src/libpq.ts) for API contracts, and
+[DEVEL.md](DEVEL.md) for contributor procedures. `deno.json` is the source of
+truth for exports, tasks, formatting, and linting. Requires Deno 2.9+ and libpq
+17+.
 
 ## Native and protocol invariants
 
@@ -92,8 +93,8 @@ formatting, and linting. Requires Deno 2.9+ and libpq 17+.
 - Keep `prebuilds/` uncommitted. JSR includes verified release binaries and
   runtime sources, but excludes README, tests, and developer tooling. Publish
   only through the manual GitHub workflow when explicitly requested.
-- Keep precise consumer contracts/examples in public JSDoc, onboarding
-  essentials in README, and contributor workflows in DEVEL. Inline comments
+- Keep precise consumer contracts/examples in public JSDoc, the project overview
+  and JSR links in README, and contributor workflows in DEVEL. Inline comments
   explain non-obvious ownership transfers, ordering, and parser constraints; do
   not narrate obvious syntax. Update the relevant documents when behavior
   changes.

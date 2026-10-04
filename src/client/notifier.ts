@@ -137,7 +137,7 @@ export class Notifier implements AsyncDisposable {
 	 *
 	 * @example
 	 * ```ts
-	 * import { Client, Notifier } from '../mod.ts'
+	 * import { Client, Notifier } from '@carragom/deno-pg-ffi'
 	 *
 	 * await using db = await Client.connect()
 	 * await using notifier = await Notifier.connect()
@@ -197,7 +197,7 @@ export class Notifier implements AsyncDisposable {
 	 *
 	 * @example
 	 * ```ts
-	 * import { Notifier } from '../mod.ts'
+	 * import { Notifier } from '@carragom/deno-pg-ffi'
 	 *
 	 * await using notifier = await Notifier.connect()
 	 * const channel = `docs_listen_${crypto.randomUUID().replaceAll('-', '')}`
@@ -293,7 +293,7 @@ export class Notifier implements AsyncDisposable {
 		await this.#closing
 	}
 
-	/** Dispose this resource by awaiting {@linkcode close}. */
+	/** Dispose this resource by awaiting {@linkcode Notifier.close}. */
 	[Symbol.asyncDispose](): Promise<void> {
 		return this.close()
 	}

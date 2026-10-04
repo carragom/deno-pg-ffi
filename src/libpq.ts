@@ -2,8 +2,10 @@
  * Raw libpq function table for building a custom PostgreSQL client in Deno.
  *
  * For managed connections, parameter conversion, results, and pooling, use
- * `Client` and `Pool` from the package's default entry point. This module
- * exposes {@linkcode libpq}, its {@linkcode Libpq} interface, pointer types,
+ * {@linkcode Client} and
+ * {@linkcode Pool} from the
+ * package's default entry point. This module
+ * exposes {@linkcode libpq}, its {@linkcode libpq} interface, pointer types,
  * and C enums.
  *
  * Importing this module eagerly loads libpq 17+. Set `DENO_LIBPQ_PATH` to a
@@ -90,7 +92,7 @@ import { ffi } from './native/load.ts'
 import type { Libpq } from './native/symbols.ts'
 
 /**
- * Loaded raw libpq symbols, typed by {@linkcode Libpq}.
+ * Loaded raw libpq symbols, typed by {@linkcode libpq}.
  *
  * Check each function's return value and follow its allocation/borrowing rules.
  * No argument encoding, row conversion, SQL exceptions, or automatic disposal

@@ -97,7 +97,7 @@ function rowCountFromTag(tag: string): number | undefined {
  *
  * @example
  * ```ts
- * import { Client } from '../mod.ts'
+ * import { Client } from '@carragom/deno-pg-ffi'
  *
  * await using db = await Client.connect()
  * await using r = await db.query<{ n: number }>(
@@ -152,7 +152,7 @@ class ResultRows<T> implements Rows<T> {
 
 	/**
 	 * Row at `index`, or `undefined` if out of range. Negative indexes count
-	 * from the end, like {@linkcode Array.at}.
+	 * from the end, like {@linkcode https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/at | Array.prototype.at}.
 	 */
 	at(index: number): T | undefined {
 		// Cached row access still belongs to the result lifetime. The copied
@@ -186,14 +186,14 @@ class ResultRows<T> implements Rows<T> {
  * client or releasing its pool checkout does not dispose this result.
  *
  * Commands buffer the full native result before returning. JavaScript row
- * decoding is lazy and can throw while indexing or iterating {@linkcode rows}.
+ * decoding is lazy and can throw while indexing or iterating {@linkcode Result.rows}.
  * Dispose the result even when decoding fails; the connection remains usable.
  * Materialized row objects and copied metadata survive result disposal.
  * The generic `T` is a TypeScript contract, not runtime validation.
  *
  * @example
  * ```ts
- * import { Client } from '../mod.ts'
+ * import { Client } from '@carragom/deno-pg-ffi'
  *
  * await using db = await Client.connect()
  * await using r = await db.query('SELECT 1::int4 AS n')
@@ -281,7 +281,7 @@ export class Result<T = Record<string, unknown>> implements Disposable {
  *
  * @example
  * ```ts
- * import { Client } from '../mod.ts'
+ * import { Client } from '@carragom/deno-pg-ffi'
  *
  * await using db = await Client.connect()
  * await using results = await db.exec('SELECT 1::int4 AS n; SELECT 2::int4 AS n')
@@ -314,7 +314,7 @@ export class Results implements Iterable<Result>, Disposable {
 
 	/**
 	 * Result at `index`, or `undefined` if out of range. Negative indexes count
-	 * from the end, like {@linkcode Array.at}. Throws after batch disposal.
+	 * from the end, like {@linkcode https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/at | Array.prototype.at}. Throws after batch disposal.
 	 */
 	at(index: number): Result | undefined {
 		if (this.#disposed) {

@@ -17,8 +17,12 @@ import { unescapeBytea } from '../native/wrappers.ts'
 /**
  * A result converter for one non-NULL PostgreSQL text value.
  * Converts server text to the JavaScript value exposed in a row.
- * Passed to Client.registerScalar or Pool.registerScalar. Matching array leaves
- * use the same function; SQL NULL remains null without calling it.
+ * Passed to
+ * {@linkcode Client.registerScalar} or
+ * {@linkcode Pool.registerScalar}.
+ * Matching array leaves
+ * use the same function; SQL NULL remains null without calling it. Exceptions
+ * propagate during row access; dispose the result even if conversion fails.
  * @param text Server text for the registered scalar type.
  * @returns The value to expose in a materialized row.
  */

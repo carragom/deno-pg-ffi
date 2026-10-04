@@ -11,16 +11,16 @@ export interface Notify {
 
 /** PostgreSQL object/type identifier, represented as a JavaScript number. */
 export type Oid = number
-/** Opaque caller-owned cancel handle from PQgetCancel; release with PQfreeCancel. */
+/** Opaque caller-owned cancel handle from {@linkcode Libpq.PQgetCancel}; release with {@linkcode Libpq.PQfreeCancel}. */
 export type PGcancel = Deno.PointerObject
-/** Opaque connection handle. Raw callers release it with PQfinish after pending calls complete. */
+/** Opaque connection handle. Raw callers release it with {@linkcode Libpq.PQfinish} after pending calls complete. */
 export type PGconn = Deno.PointerObject
-/** Opaque independently owned result handle. Release with PQclear; its borrowed field pointers then become invalid. */
+/** Opaque independently owned result handle. Release with {@linkcode Libpq.PQclear}; its borrowed field pointers then become invalid. */
 export type PGresult = Deno.PointerObject
-/** Nullable pointer to an allocated PGnotify structure from PQnotifies. A non-null structure is released with PQfreemem after copying its fields. */
+/** Nullable pointer to an allocated PGnotify structure from {@linkcode Libpq.PQnotifies}. A non-null structure is released with {@linkcode Libpq.PQfreemem} after copying its fields. */
 export type PGnotify = Deno.PointerValue
 
-/** C result status codes returned by PQresultStatus. */
+/** C result status codes returned by {@linkcode Libpq.PQresultStatus}. */
 export enum ExecStatusType {
 	/** Empty query string was executed. */
 	PGRES_EMPTY_QUERY,
@@ -48,11 +48,11 @@ export enum ExecStatusType {
 	PGRES_PIPELINE_ABORTED,
 }
 
-/** C connection status codes returned by PQstatus; intermediate values describe a poll handshake. */
+/** C connection status codes returned by {@linkcode Libpq.PQstatus}; intermediate values describe a poll handshake. */
 export enum ConnStatusType {
 	/** The connection is ready to use. */
 	CONNECTION_OK,
-	/** The connection failed or is unusable; inspect PQerrorMessage. */
+	/** The connection failed or is unusable; inspect {@linkcode Libpq.PQerrorMessage}. */
 	CONNECTION_BAD,
 	/** Waiting for connection to be made. */
 	CONNECTION_STARTED,
@@ -80,7 +80,7 @@ export enum ConnStatusType {
 	CONNECTION_CHECK_STANDBY,
 }
 
-/** C poll-step outcomes from PQconnectPoll and PQresetPoll. */
+/** C poll-step outcomes from {@linkcode Libpq.PQconnectPoll} and {@linkcode Libpq.PQresetPoll}. */
 export enum PostgresPollingStatusType {
 	/** The async operation failed. */
 	PGRES_POLLING_FAILED,
@@ -116,7 +116,7 @@ export enum PGVerbosity {
 	PQERRORS_SQLSTATE,
 }
 
-/** Server availability outcomes returned by PQping. */
+/** Server availability outcomes returned by {@linkcode Libpq.PQping}. */
 export enum PGPing {
 	/** Server is accepting connections. */
 	PQPING_OK,
@@ -128,7 +128,7 @@ export enum PGPing {
 	PQPING_NO_ATTEMPT,
 }
 
-/** Transaction state codes returned by PQtransactionStatus. */
+/** Transaction state codes returned by {@linkcode Libpq.PQtransactionStatus}. */
 export enum PGTransactionStatusType {
 	/** Connection idle. */
 	PQTRANS_IDLE,
@@ -143,7 +143,7 @@ export enum PGTransactionStatusType {
 }
 
 /**
- * Error field codes for use with PQresultErrorField
+ * Error field codes for use with {@linkcode Libpq.PQresultErrorField}
  * Based on postgres_ext.h PG_DIAG_* constants
  * Each value corresponds to the ASCII code of a single character
  */

@@ -17,7 +17,7 @@ import {
  *
  * @example
  * ```ts
- * import { PostgresError, Client } from '../mod.ts'
+ * import { PostgresError, Client } from '@carragom/deno-pg-ffi'
  *
  * await using db = await Client.connect()
  * try {

@@ -1,7 +1,8 @@
 import { PGURL } from './constants.ts'
 
 /**
- * libpq 17
+ * Supported libpq 17 connection option names for
+ * {@linkcode ConnectOptions}. See the upstream
  * {@link https://www.postgresql.org/docs/17/libpq-connect.html#LIBPQ-PARAMKEYWORDS | parameter keywords}.
  */
 export type ConnectKeyword =
@@ -49,14 +50,19 @@ export type ConnectKeyword =
 	| 'load_balance_hosts'
 
 /**
- * Connection options accepted by Client.connect, Pool.create, and Notifier.connect.
+ * Connection options accepted by
+ * {@linkcode Client.connect},
+ * {@linkcode Pool.create}, and
+ * {@linkcode Notifier.connect}.
  * Keys are libpq
  * {@link https://www.postgresql.org/docs/17/libpq-connect.html#LIBPQ-PARAMKEYWORDS | parameter keywords}.
  * Values are strings; properties set to `undefined` are omitted. An explicit
  * object bypasses `PGURL`; unspecified fields still use libpq's environment
  * variables, connection files, and defaults. For example, `{ connect_timeout:
  * '5' }` limits the poll handshake to five seconds while leaving other fields
- * at their defaults. See Client.connect for all connection forms and precedence.
+ * at their defaults. See
+ * {@linkcode Client.connect}
+ * for all connection forms and precedence.
  */
 export type ConnectOptions = { [K in ConnectKeyword]?: string }
 

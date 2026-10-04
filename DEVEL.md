@@ -1,8 +1,9 @@
 # Developing deno-pg-ffi
 
-Deno native bindings for PostgreSQL libpq. See [README.md](README.md) for usage
-and [AGENTS.md](AGENTS.md) for agent constraints. [deno.json](deno.json) defines
-the package, tasks, and tooling settings.
+Deno native bindings for PostgreSQL libpq. See the
+[JSR documentation](https://jsr.io/@carragom/deno-pg-ffi) for usage and
+[AGENTS.md](AGENTS.md) for agent constraints. [deno.json](deno.json) defines the
+package, tasks, and tooling settings.
 
 ## Getting started
 
@@ -309,6 +310,25 @@ Linux x86_64 PR CI benchmarks the PR and a worktree of `base.sha`.
 the base has no usable benchmarks or a nonpositive average, or a PR average is
 more than 20% slower. If the base lacks `bench/client.ts`, it skips comparison.
 Generated measurements and baselines are not committed.
+
+## Public documentation
+
+README introduces the project and directs consumers to JSR. Keep installation,
+examples, platform requirements, and API contracts in public JSDoc; the default
+module comment in `src/mod.ts` supplies JSR's overview.
+
+Use symbolic JSDoc references such as `{@linkcode Client}` and
+`{@linkcode Client.query}` for API links so editors and documentation generators
+can resolve them. Keep upstream PostgreSQL references and contributor links
+external. JSR currently rewrites generated symbol paths into broken GitHub URLs;
+[upstream PR #1532](https://github.com/jsr-io/jsr/pull/1532) addresses that
+renderer bug. Do not replace symbol references with hardcoded JSR URLs to work
+around it. Examples import `@carragom/deno-pg-ffi` (or its `/libpq` entry
+point); Deno resolves this package's own name locally, so the same examples run
+during checkout verification.
+
+Published documentation belongs to its immutable JSR version. Source edits
+appear on JSR only after publishing a new version.
 
 ## CI
 

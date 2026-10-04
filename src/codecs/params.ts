@@ -131,7 +131,7 @@ export function serializeDuration(value: unknown): string {
  *
  * @example
  * ```ts
- * import { json } from '../mod.ts'
+ * import { json } from '@carragom/deno-pg-ffi'
  *
  * if (json({ a: 1 }) !== '{"a":1}') {
  * 	throw new Error('expected object text')
@@ -179,7 +179,7 @@ export function json(value: unknown): string {
  *
  * @example
  * ```ts
- * import { array } from '../mod.ts'
+ * import { array } from '@carragom/deno-pg-ffi'
  *
  * if (array([1, null, 3]) !== '{1,NULL,3}') {
  * 	throw new Error('expected null token')

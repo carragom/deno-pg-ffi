@@ -36,22 +36,25 @@ const INTERVAL_STYLE_SQL = 'SET IntervalStyle = iso_8601'
 
 /**
  * Driver options for {@linkcode Client.connect} and {@linkcode Pool.create}.
- * Both flags default to false and are captured when the factory is invoked;
- * later mutations of the options object do not change conversion. They
- * independently enable strict scalar and array-leaf converters. SQL NULL stays
- * null. Conversion RangeErrors identify the type and text and retain the
- * underlying cause; there is no string fallback. A command can succeed before
- * reading a row fails.
+ * Both options default to `false`. They enable strict result conversion for
+ * `time` and `interval`, including array elements; they do not change accepted
+ * parameter values. SQL NULL remains null.
  *
- * Custom scalar overrides take precedence. With a flag enabled, its array is
- * already paired with the scalar. Otherwise register the scalar and explicitly
- * pair the array: time OIDs are 1083/1183; interval OIDs are 1186/1187.
+ * Options are captured when the client or pool is created. Conversion happens
+ * when a row is first read, so a successful query can still produce a RangeError
+ * during row access. Unsupported values are never normalized or replaced with
+ * strings; errors identify the type and text and retain the underlying cause.
+ * Custom result converters take precedence over these defaults.
+ * With an option enabled, its array type is already paired with its scalar
+ * converter. Otherwise a custom scalar override also needs an explicit array
+ * pairing through {@linkcode Client.registerArray}.
  */
 export interface ClientOptions {
 	/**
 	 * Decode `time` and `time[]` as Temporal.PlainTime. Default `false` keeps
 	 * strings. `24:00:00` throws RangeError during lazy row access; it is not
 	 * normalized to midnight. Does not affect `timetz` or parameter support.
+	 * Scalar and array type OIDs are 1083 and 1183.
 	 */
 	temporalTime?: boolean
 	/**
@@ -65,6 +68,7 @@ export interface ClientOptions {
 	 * is unchanged. Calendar months, days, and elapsed time stay separate; values
 	 * are not normalized or returned as strings on failure.
 	 * Does not affect parameter support; see {@linkcode Param} for precision.
+	 * Scalar and array type OIDs are 1186 and 1187.
 	 */
 	temporalInterval?: boolean
 }
@@ -79,7 +83,7 @@ const connRegistry = new FinalizationRegistry<PGconn>((conn) => {
 })
 
 /**
- * Owned poll connection. Construct only through {@linkcode Client.connect}.
+ * A PostgreSQL connection for queries and prepared statements. Open it through {@linkcode Client.connect}.
  * {@linkcode Client.close} finishes the connection once and waits for any
  * command in progress; it does not cancel that command.
  *
@@ -91,7 +95,7 @@ const connRegistry = new FinalizationRegistry<PGconn>((conn) => {
  *
  * @example
  * ```ts
- * import { Client } from '../mod.ts'
+ * import { Client } from '@carragom/deno-pg-ffi'
  *
  * await using db = await Client.connect()
  * await using r = await db.query<{ n: number }>('SELECT $1::int4 AS n', [1])
@@ -152,7 +156,7 @@ export class Client implements PreparedClient {
 	 *
 	 * @example Opt in to strict time and interval decoding
 	 * ```ts
-	 * import { Client } from '../mod.ts'
+	 * import { Client } from '@carragom/deno-pg-ffi'
 	 *
 	 * await using db = await Client.connect(undefined, {
 	 * 	temporalTime: true,
@@ -216,7 +220,7 @@ export class Client implements PreparedClient {
 	 * latest converter, while cached rows keep their values. SQL NULL bypasses
 	 * the converter. Register before reading results for consistent values.
 	 * Arrays without a built-in scalar converter for their elements, such as
-	 * `uuid[]`, require an explicit {@linkcode registerArray} pairing before a
+	 * `uuid[]`, require an explicit {@linkcode Client.registerArray} pairing before a
 	 * scalar override applies to leaves.
 	 *
 	 * @param oid Type OID from `PQftype`
@@ -225,7 +229,7 @@ export class Client implements PreparedClient {
 	 *
 	 * @example
 	 * ```ts
-	 * import { Client } from '../mod.ts'
+	 * import { Client } from '@carragom/deno-pg-ffi'
 	 *
 	 * await using db = await Client.connect()
 	 * db.registerScalar(2950, (text) => text.toUpperCase())
@@ -248,7 +252,7 @@ export class Client implements PreparedClient {
 	 * given, every leaf uses that scalar result converter. A second call for the
 	 * same array OID replaces the override.
 	 * Preserves nesting and SQL NULL leaves, but discards PostgreSQL lower bounds.
-	 * Like {@linkcode registerScalar}, changes affect unread rows, not cached rows.
+	 * Like {@linkcode Client.registerScalar}, changes affect unread rows, not cached rows.
 	 *
 	 * @param arrayOid Array type OID from `PQftype`
 	 * @param elementOid Scalar element OID that already has a
@@ -262,7 +266,7 @@ export class Client implements PreparedClient {
 	 *
 	 * @example
 	 * ```ts
-	 * import { Client } from '../mod.ts'
+	 * import { Client } from '@carragom/deno-pg-ffi'
 	 *
 	 * await using db = await Client.connect()
 	 * db.registerScalar(2950, (text) => text.toUpperCase())
@@ -299,7 +303,7 @@ export class Client implements PreparedClient {
 	 *
 	 * @example
 	 * ```ts
-	 * import { Client } from '../mod.ts'
+	 * import { Client } from '@carragom/deno-pg-ffi'
 	 *
 	 * await using db = await Client.connect()
 	 * await using r = await db.query<{ name: string }>(
@@ -347,7 +351,7 @@ export class Client implements PreparedClient {
 	 *
 	 * @example
 	 * ```ts
-	 * import { Client } from '../mod.ts'
+	 * import { Client } from '@carragom/deno-pg-ffi'
 	 *
 	 * await using db = await Client.connect()
 	 * await using results = await db.exec(
@@ -390,7 +394,7 @@ export class Client implements PreparedClient {
 	 *
 	 * @example
 	 * ```ts
-	 * import { Client } from '../mod.ts'
+	 * import { Client } from '@carragom/deno-pg-ffi'
 	 *
 	 * await using db = await Client.connect()
 	 * await using stmt = await db.prepare(
@@ -438,7 +442,7 @@ export class Client implements PreparedClient {
 	 *
 	 * @example
 	 * ```ts
-	 * import { Client } from '../mod.ts'
+	 * import { Client } from '@carragom/deno-pg-ffi'
 	 *
 	 * const db = await Client.connect()
 	 * await db.close()
@@ -460,7 +464,7 @@ export class Client implements PreparedClient {
 		finish(conn)
 	}
 
-	/** Dispose this resource by awaiting {@linkcode close}. */
+	/** Dispose this resource by awaiting {@linkcode Client.close}. */
 	[Symbol.asyncDispose](): Promise<void> {
 		return this.close()
 	}

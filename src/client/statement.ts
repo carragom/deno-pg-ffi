@@ -30,7 +30,7 @@ export interface PreparedClient extends AsyncDisposable {
  *
  * @example
  * ```ts
- * import { Client } from '../mod.ts'
+ * import { Client } from '@carragom/deno-pg-ffi'
  *
  * await using db = await Client.connect()
  * await using stmt = await db.prepare('SELECT $1::int4 AS n')
@@ -57,7 +57,8 @@ export class Statement implements AsyncDisposable {
 
 	/**
 	 * Run the prepared statement.
-	 * Uses the same parameter conversion and result ownership as Client.query.
+	 * Uses the same parameter conversion and result ownership as
+	 * {@linkcode Client.query}.
 	 * `T` declares the row shape without runtime validation. Holding a result
 	 * does not prevent another command after this execution finishes.
 	 *
@@ -92,7 +93,7 @@ export class Statement implements AsyncDisposable {
 		}
 	}
 
-	/** Dispose this resource by awaiting {@linkcode close}. */
+	/** Dispose this resource by awaiting {@linkcode Statement.close}. */
 	[Symbol.asyncDispose](): Promise<void> {
 		return this.close()
 	}
