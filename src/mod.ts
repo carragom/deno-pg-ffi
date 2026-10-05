@@ -149,6 +149,23 @@
  * {@linkcode Notifier} owns a separate connection to LISTEN for NOTIFY events. Send
  * notifications through a client:
  *
+ * ```ts
+ * import { Client, Notifier } from '@carragom/deno-pg-ffi'
+ *
+ * await using db = await Client.connect()
+ * await using notifier = await Notifier.connect()
+ * const channel = `example_${crypto.randomUUID().replaceAll('-', '')}`
+ * const received = Promise.withResolvers<string>()
+ * await notifier.listen(channel, (notification) => {
+ * 	received.resolve(notification.extra)
+ * })
+ * await using sent = await db.query('SELECT pg_notify($1, $2)', [
+ * 	channel,
+ * 	'hello',
+ * ])
+ * console.log(await received.promise) // hello
+ * ```
+ *
  * See {@linkcode Notifier.listen} for listener management and channel limits,
  * and {@linkcode NotifierOptions} for polling and error handling. Receive
  * failures close the notifier; it does not automatically reconnect.
@@ -328,47 +345,38 @@
  * libpq itself reads `PG*` variables, `.pgpass` and connection files and opens
  * database sockets through FFI, outside Deno's file/network permission checks.
  *
- * ## Errors and limits
+ * ## Errors
  *
- * SQL errors reject commands with {@linkcode PostgresError}; its diagnostics
- * are copied and the native error result is cleared. Connection, transport,
- * and state failures use ordinary Errors. Invalid parameters throw TypeError.
+ * SQL errors reject commands with {@linkcode PostgresError}, which provides
+ * the SQLSTATE code and server diagnostics. Connection, transport, and state
+ * failures (such as using a closed or busy client) use ordinary Errors.
+ * Invalid parameters throw TypeError.
  * Result converters, including custom callbacks, can throw when a row is first
  * read; dispose the result even when conversion fails.
+ *
+ * ## Current limits
  *
  * The managed API collects complete text results. It does not provide streaming
  * rows, COPY streaming, pipeline mode, binary decoding, automatic statement
  * caching, or a transaction helper. Commands have no client-side timeout or
  * `AbortSignal`; PostgreSQL's `statement_timeout` can limit SQL execution.
  *
+ * ## Raw libpq API
+ *
  * The raw `@carragom/deno-pg-ffi/libpq` entry point retains C return codes,
  * NULL pointers and caller-managed memory. Its supported functions are
- * declared on {@linkcode libpq}; COPY streaming and pipeline functions are not
- * currently exposed. See {@linkcode libpq} for the raw function table.
+ * exposed as named `PQ*` exports; COPY streaming and pipeline functions are not
+ * currently exposed. See the
+ * {@link https://jsr.io/@carragom/deno-pg-ffi/doc/libpq/ | raw entry point}
+ * for individual function contracts.
+ *
+ * ## License
  *
  * The project uses the MIT license. The package includes `LICENSE` and
  * `THIRD_PARTY_LICENSES.txt`; the latter covers libpq on all platforms and
  * OpenSSL included in macOS binaries.
  *
  * @module
- *
- * @example Receive a notification on a dedicated connection
- * ```ts
- * import { Client, Notifier } from '@carragom/deno-pg-ffi'
- *
- * await using db = await Client.connect()
- * await using notifier = await Notifier.connect()
- * const channel = `example_${crypto.randomUUID().replaceAll('-', '')}`
- * const received = Promise.withResolvers<string>()
- * await notifier.listen(channel, (notification) => {
- * 	received.resolve(notification.extra)
- * })
- * await using sent = await db.query('SELECT pg_notify($1, $2)', [
- * 	channel,
- * 	'hello',
- * ])
- * console.log(await received.promise) // hello
- * ```
  */
 export { Client } from './client/client.ts'
 export type { ClientOptions } from './client/client.ts'

@@ -3,7 +3,7 @@ import { dlopen } from '@denosaurs/plug'
 import { DENO_LIBPQ_PATH, DENO_LIBPQ_URL } from '../constants.ts'
 import meta from '../../deno.json' with { type: 'json' }
 import { releaseArtifactFilenames } from './artifacts.ts'
-import { type Libpq, symbols } from './symbols.ts'
+import { type LibpqSymbols, symbols } from './symbols.ts'
 
 const libCustomPath = Deno.env.get(DENO_LIBPQ_PATH)
 let lib: Deno.DynamicLibrary<Deno.ForeignLibraryInterface>
@@ -40,7 +40,7 @@ if (libCustomPath === undefined) {
 	lib = Deno.dlopen(libCustomPath, symbols)
 }
 
-export const ffi = lib.symbols as unknown as Libpq
+export const ffi = lib.symbols as unknown as LibpqSymbols
 
 async function defaultLibraryBase(): Promise<string> {
 	const prebuilds = new URL('../../prebuilds/', import.meta.url)

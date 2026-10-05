@@ -7,10 +7,13 @@ if (Deno.env.get('DENO_LIBPQ_PATH') || Deno.env.get('DENO_LIBPQ_URL')) {
 	throw new Error('Smoke verification must use the default packaged library.')
 }
 const { Client, Pool, Notifier } = await import(managedSpecifier)
-const { libpq } = await import(rawSpecifier)
+const { PQgetCurrentTimeUSec, PQconnectdb, PQfinish } = await import(
+	rawSpecifier
+)
 if (
 	!Client || !Pool || !Notifier ||
-	typeof libpq.PQgetCurrentTimeUSec() !== 'bigint'
+	typeof PQconnectdb !== 'function' || typeof PQfinish !== 'function' ||
+	typeof PQgetCurrentTimeUSec() !== 'bigint'
 ) {
 	throw new Error('Package exports or the loaded libpq version are invalid.')
 }

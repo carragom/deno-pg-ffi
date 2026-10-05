@@ -6,7 +6,20 @@ import {
 } from '@std/assert'
 import { delay } from '@std/async'
 
+import { conninfoParamsFromUrl } from '../conninfo.ts'
 import { PGURL } from '../constants.ts'
+import {
+	ConnStatusType,
+	ExecStatusType,
+	type PGconn,
+	PGContextVisibility,
+	PGDiag,
+	PGPing,
+	PGTransactionStatusType,
+	PGVerbosity,
+	PQconnectStart,
+} from '../libpq.ts'
+import { encodeTerminated } from './strings.ts'
 import {
 	backendPID,
 	clear,
@@ -33,19 +46,6 @@ import {
 	transactionStatus,
 	user,
 } from './wrappers.ts'
-import {
-	ConnStatusType,
-	ExecStatusType,
-	libpq as ffi,
-	type PGconn,
-	PGContextVisibility,
-	PGDiag,
-	PGPing,
-	PGTransactionStatusType,
-	PGVerbosity,
-} from '../libpq.ts'
-import { conninfoParamsFromUrl } from '../conninfo.ts'
-import { encodeTerminated } from './strings.ts'
 
 const PG_ENV_KEYS = [
 	'PGHOST',
@@ -614,7 +614,7 @@ Deno.test('poll primitives', async (t) => {
 	})
 
 	await t.step('sendQuery throws on a failed connection', () => {
-		const ptr = ffi.PQconnectStart(
+		const ptr = PQconnectStart(
 			encodeTerminated('invalid://connection/string'),
 		)
 		assertExists(ptr)

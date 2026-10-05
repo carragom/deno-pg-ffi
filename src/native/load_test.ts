@@ -101,9 +101,9 @@ Deno.test({
 							'eval',
 							`Deno.env.delete('DENO_LIBPQ_PATH'); Deno.env.delete('DENO_LIBPQ_URL'); await import(${
 								JSON.stringify(managed)
-							}); const {libpq} = await import(${
+							}); const {PQgetCurrentTimeUSec} = await import(${
 								JSON.stringify(raw)
-							}); if(typeof libpq.PQgetCurrentTimeUSec() !== 'bigint') throw new Error('invalid libpq')`,
+							}); if(typeof PQgetCurrentTimeUSec() !== 'bigint') throw new Error('invalid libpq')`,
 						], { stdout: 'null', stderr: 'piped' })
 						assertEquals(
 							output.success,

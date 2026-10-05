@@ -849,14 +849,15 @@ Deno.test('root barrel exports Client, PoolClient, Statement, and PostgresError'
 	assertEquals(root.array, array)
 })
 
-Deno.test('libpq barrel exports the raw table and enums', async () => {
+Deno.test('libpq barrel exports named raw functions and enums', async () => {
 	const raw = await import('../libpq.ts')
 	const { ffi } = await import('../native/load.ts')
-	assertEquals(raw.libpq, ffi)
-	assertEquals(typeof raw.libpq.PQconnectdb, 'function')
-	assertEquals(typeof raw.libpq.PQexec, 'function')
-	assertEquals(typeof raw.libpq.PQclear, 'function')
-	assertEquals(typeof raw.libpq.PQsocketPollAsync, 'function')
+	assertEquals(raw.PQconnectdb, ffi.PQconnectdb)
+	assertEquals('libpq' in raw, false)
+	assertEquals(typeof raw.PQconnectdb, 'function')
+	assertEquals(typeof raw.PQexec, 'function')
+	assertEquals(typeof raw.PQclear, 'function')
+	assertEquals(typeof raw.PQsocketPollAsync, 'function')
 	assertEquals(raw.ConnStatusType.CONNECTION_OK, 0)
 	assertEquals('connectdb' in raw, false)
 	assertEquals('exec' in raw, false)

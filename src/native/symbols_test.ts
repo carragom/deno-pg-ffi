@@ -1,9 +1,9 @@
+import * as ffi from '../libpq.ts'
 import { assertEquals, assertExists } from '@std/assert'
 
 import {
 	ConnStatusType,
 	ExecStatusType,
-	libpq as ffi,
 	PGContextVisibility,
 	PGDiag,
 	PGPing,
@@ -183,7 +183,7 @@ Deno.test('ffi', async (t) => {
 			assertExists(module.PGPing)
 			assertExists(module.PGTransactionStatusType)
 			assertExists(module.PGDiag)
-			assertExists(module.libpq)
+			assertExists(module.PQconnectdb)
 		})
 	})
 

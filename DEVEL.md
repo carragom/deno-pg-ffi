@@ -226,7 +226,7 @@ baselines, or `node_modules/`. The package intentionally has `lock: false`.
 | Path               | Responsibility                                                         |
 | ------------------ | ---------------------------------------------------------------------- |
 | `src/mod.ts`       | Managed public API                                                     |
-| `src/libpq.ts`     | Raw public `libpq.PQ*` table, `Libpq`, C enums, and pointer types      |
+| `src/libpq.ts`     | Raw public named `PQ*` functions, C enums, and pointer types           |
 | `src/client/`      | Client, pool, statements, results, SQL errors, and notifier            |
 | `src/protocol/`    | Poll handshake, socket waits, command flushing and result collection   |
 | `src/codecs/`      | Parameter text, array parsing/quoting, and OID registry                |
@@ -278,10 +278,13 @@ result converters continue to use `Number` or `BigInt` as appropriate.
 
 ## Adding an FFI symbol
 
-1. Declare it on the `Libpq` interface and `symbols` in `src/native/symbols.ts`.
-   The raw table exposes required symbols.
-2. Document C arguments, return codes, NULL cases, and ownership/lifetime on
-   `Libpq`.
+1. Declare it on the internal `LibpqSymbols` interface and `symbols` in
+   `src/native/symbols.ts`. Keep the FFI declaration and TypeScript signature
+   aligned.
+2. Add its named export in `src/libpq.ts`, directly referencing the loaded FFI
+   function. Document C arguments, return codes, NULL cases, and
+   ownership/lifetime on that export. Do not add managed conversion or cleanup
+   to raw exports.
 3. Add an internal adapter in `src/native/wrappers.ts` if managed code needs it.
    An adapter that differs from C needs `@tags libpq-deviation` and a **Differs
    from C** sentence.
