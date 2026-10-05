@@ -365,25 +365,27 @@ Update `deno_version` in that action to change the workflow Deno version.
 
 | Platform | CI build environment                    | Release build environment                  |
 | -------- | --------------------------------------- | ------------------------------------------ |
-| Linux    | Debian 13, x86_64/aarch64               | AlmaLinux 8 and 9, both architectures      |
+| Linux    | AlmaLinux 8 and 9, both architectures   | AlmaLinux 8 and 9, both architectures      |
 | macOS    | `macos-15` ARM / `macos-15-intel` Intel | Same runners, macOS 15.0 deployment target |
 
 Every test run includes type checking, documentation examples, and leak tracing:
 
-| Run                      | Library                                    | Connection and TLS test                    |
-| ------------------------ | ------------------------------------------ | ------------------------------------------ |
-| Direct artifact          | Built `.so` / `.dylib`                     | TCP, `sslmode=require`, `LIBPQ_TEST_TLS=1` |
-| Unix socket              | Built `.so` / `.dylib`                     | Unix socket, TLS test disabled             |
-| System library (CI only) | Debian `libpq5` / Homebrew `postgresql@17` | TCP, `sslmode=disable`, TLS test disabled  |
-| Download loading         | Built artifact served over local HTTP      | TCP, `sslmode=require`, `LIBPQ_TEST_TLS=1` |
+| Run                      | Library                               | Connection and TLS test                    |
+| ------------------------ | ------------------------------------- | ------------------------------------------ |
+| Direct artifact          | Built `.so` / `.dylib`                | TCP, `sslmode=require`, `LIBPQ_TEST_TLS=1` |
+| Unix socket              | Built `.so` / `.dylib`                | Unix socket, TLS test disabled             |
+| System library (CI only) | Homebrew `postgresql@17` (macOS only) | TCP, `sslmode=disable`, TLS test disabled  |
+| Download loading         | Built artifact served over local HTTP | TCP, `sslmode=require`, `LIBPQ_TEST_TLS=1` |
 
-CI enables `test_system_libpq`; releases leave it false. System libraries must
-also be libpq 17+. Linux artifact TCP tests use the TLS-enabled
-`postgres:17-trixie` service. System-library tests, benchmarks, and Unix-socket
-tests use a fresh container-local cluster without TLS. Debian setup suppresses
-automatic cluster creation before initializing that cluster. AlmaLinux uses
-distribution PostgreSQL/OpenSSL packages without adding the PostgreSQL Yum
-repository. Setup and cleanup manage only CI-created clusters.
+CI and release build and test the same six binary variants. AlmaLinux 8 uses
+OpenSSL 1.1 and local PostgreSQL 10; AlmaLinux 9 uses OpenSSL 3 and local
+PostgreSQL 13. CI enables `test_system_libpq` only on macOS; releases leave it
+false. AlmaLinux's bundled libpq versions are below the required libpq 17+.
+Linux artifact TCP tests use the TLS-enabled `postgres:17-trixie` service.
+System-library tests, benchmarks, and Unix-socket tests use a fresh
+container-local cluster without TLS. AlmaLinux uses distribution
+PostgreSQL/OpenSSL packages without adding the PostgreSQL Yum repository. Setup
+and cleanup manage only CI-created clusters.
 
 macOS uses a fresh local PostgreSQL 17 cluster. Its artifacts statically link
 OpenSSL 3 and undergo a system-only dylib dependency audit. Artifact/local

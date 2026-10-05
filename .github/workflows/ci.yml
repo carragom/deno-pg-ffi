@@ -19,27 +19,38 @@ jobs:
         include:
           - platform: linux
             runner: ubuntu-24.04
-            container: debian:13
+            container: ghcr.io/almalinux/almalinux:8
+            arch: x86_64
+            output: libpq-openssl11_x86_64.so
+          - platform: linux
+            runner: ubuntu-24.04-arm
+            container: ghcr.io/almalinux/almalinux:8
+            arch: aarch64
+            output: libpq-openssl11_aarch64.so
+          - platform: linux
+            runner: ubuntu-24.04
+            container: ghcr.io/almalinux/almalinux:9
             arch: x86_64
             output: libpq-openssl3_x86_64.so
             run_bench: true
           - platform: linux
             runner: ubuntu-24.04-arm
-            container: debian:13
+            container: ghcr.io/almalinux/almalinux:9
             arch: aarch64
             output: libpq-openssl3_aarch64.so
-            run_bench: false
           - platform: macos
             runner: macos-15
             output: libpq_aarch64.dylib
+            test_system_libpq: true
           - platform: macos
             runner: macos-15-intel
             output: libpq_x86_64.dylib
+            test_system_libpq: true
     with:
       platform: ${{ matrix.platform }}
       runner: ${{ matrix.runner }}
       container: ${{ matrix.container || '' }}
       output: ${{ matrix.output }}
-      test_system_libpq: true
+      test_system_libpq: ${{ matrix.test_system_libpq || false }}
       upload_artifact: false
       run_bench: ${{ matrix.run_bench || false }}
