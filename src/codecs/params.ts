@@ -22,6 +22,12 @@ import { quoteArrayElement } from './array_text.ts'
  * Convert Date with `.toTemporalInstant()` and Temporal.ZonedDateTime with
  * `.toInstant()` before sending; neither is accepted directly.
  *
+ * For BC dates/timestamps and years above 9999, pass PostgreSQL-formatted
+ * strings. The current Temporal date/timestamp parameter converters send ISO
+ * year notation that PostgreSQL does not accept for these values. For example,
+ * use `'0001-01-01 BC'` for 1 BC or `'10000-01-01'` for AD 10000 when sending
+ * a `date`. Result conversion options do not change parameter encoding.
+ *
  * Temporal.PlainTime and Temporal.Duration are accepted regardless of receive
  * options, including through {@linkcode array}. PostgreSQL applies its precision
  * and range rules: nanoseconds can round to microseconds (or lower column
@@ -127,7 +133,7 @@ export function serializeDuration(value: unknown): string {
  * undefined array elements become JSON null. Bigints and cyclic objects throw.
  *
  * @param value A JSON value.
- * @returns JSON text for a parameter; JSON null and SQL NULL both receive as null.
+ * @returns JSON text for a parameter, including the string `'null'` for JSON null.
  * @throws {TypeError} When `value` is `undefined`, a bigint, or a cyclic
  * object, or when it does not encode to a string
  *

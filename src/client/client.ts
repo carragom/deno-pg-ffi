@@ -36,85 +36,128 @@ const FLOAT_DIGITS_SQL = 'SET extra_float_digits = 3'
 const INTERVAL_STYLE_SQL = 'SET IntervalStyle = iso_8601'
 
 /**
- * Driver options for {@linkcode Client.connect} and {@linkcode Pool.create}.
- * JSON, array, date, timestamp, and timestamptz converters default to enabled;
- * time and interval converters default to disabled. Scalar options also apply
- * to array elements when array parsing is enabled. Disabled converters return
- * PostgreSQL text.
- * Options do not change accepted parameters; SQL NULL remains null.
+ * Built-in result converter settings for {@linkcode Client.connect} and
+ * {@linkcode Pool.create}.
+ *
+ * These options affect values received from PostgreSQL, not accepted parameters.
+ * SQL NULL remains JavaScript `null`. With `parseArrays` enabled, scalar options
+ * also apply to non-NULL array elements; with it disabled, built-in arrays remain
+ * whole PostgreSQL text strings regardless of scalar options.
+ *
+ * Managed connections always set DateStyle to `ISO, YMD` and
+ * extra_float_digits to `3`, even when result conversion is disabled. Only
+ * IntervalStyle depends on an option: `temporalInterval` enables `iso_8601`.
+ * See {@linkcode Client.connect} for session setup and
+ * {@linkcode PoolClient.close} for pool reset behavior.
  *
  * Options are captured when the client or pool is created. Conversion happens
- * when a row is first read, so a successful query can still produce a RangeError
- * during row access. Unsupported values are never normalized or replaced with
- * strings. Custom result converters take precedence over these defaults.
- * With array parsing enabled, built-in date, timestamp, and timestamptz arrays
- * use their scalar converter
- * even when it is overridden. Time and interval arrays are paired with their
- * scalar converters when the corresponding option is enabled; otherwise a
- * custom scalar override also needs an explicit array pairing through
- * {@linkcode Client.registerArray}.
+ * when a row is first read: a query can succeed but reading its result can throw.
+ * Temporal conversion failures throw RangeError without normalization or a
+ * fallback to strings. The current date/timestamp parsers reject PostgreSQL's
+ * BC and extended-year notation even when Temporal could represent the value.
+ * Disable the corresponding converter or cast the column to `text` to read it.
+ *
+ * Custom scalar result converters override these defaults. Configure custom
+ * array conversion through {@linkcode Client.registerArray} or
+ * {@linkcode Pool.registerArray}. A custom time/interval scalar converter needs
+ * an explicit array pairing when its Temporal option is disabled.
  */
 export interface ClientOptions {
 	/**
-	 * Parse `json` and `jsonb` results with JSON.parse. Default `true`.
-	 * Set `false` to keep PostgreSQL JSON text, preserving number precision
-	 * and distinguishing JSON null (`'null'`) from SQL NULL (`null`). Also
-	 * applies to JSON array elements when `parseArrays` is enabled.
-	 * Does not affect {@linkcode json} parameters. Custom scalar converters
-	 * take precedence. Scalar OIDs are 114 and 3802.
+	 * Convert `json` and `jsonb` results with `JSON.parse`. Default `true`.
+	 * Set `false` to return PostgreSQL JSON text as a string.
+	 * Applies to JSON/JSONB array elements when `parseArrays` is enabled.
+	 *
+	 * When enabled, large integers and precise decimals can lose precision,
+	 * sufficiently large numbers become JavaScript infinities, and JSON null
+	 * and SQL NULL both become JavaScript `null`. Returning text preserves
+	 * number precision and keeps JSON null (`'null'`) distinct from SQL NULL.
+	 * JSONB text reflects PostgreSQL's normalization, not the original input's
+	 * whitespace, key order, or duplicate keys.
 	 */
 	parseJson?: boolean
 	/**
-	 * Parse built-in PostgreSQL arrays into nested JavaScript arrays. Default `true`.
-	 * Set `false` to keep the entire PostgreSQL array text, including lower
-	 * bounds, delimiters, and NULL tokens; element converters are not called.
-	 * SQL NULL still becomes null. Does not affect {@linkcode array} parameters.
-	 * An explicit {@linkcode Client.registerArray} or {@linkcode Pool.registerArray}
-	 * enables parsing for that array type even when this option is disabled.
+	 * Convert built-in PostgreSQL arrays to nested JavaScript arrays. Default `true`.
+	 * Set `false` to return each entire array as a PostgreSQL text string,
+	 * without parsing its structure or converting its elements.
+	 * Scalar options still apply to non-array columns.
+	 *
+	 * When enabled, nesting and SQL NULL elements are preserved, but original
+	 * index bounds are discarded: `[5:6]={1,2}` becomes `[1, 2]`. Each non-NULL
+	 * element uses the result converter configured for its element type; an
+	 * element conversion failure prevents that row from being read.
+	 * Returning text preserves index bounds, delimiters, and NULL tokens.
+	 *
+	 * Unregistered custom array types remain strings. An explicit
+	 * {@linkcode Client.registerArray} or {@linkcode Pool.registerArray}
+	 * enables parsing for that array type even when this option is `false`.
 	 */
 	parseArrays?: boolean
 	/**
-	 * Decode `date` and `date[]` as Temporal.PlainDate. Default `true`.
-	 * Set `false` to keep PostgreSQL text, including infinity and BC notation.
-	 * With conversion enabled, infinity, BC notation, years above 9999, and
-	 * values outside Temporal's range throw RangeError during row access.
-	 * Does not affect accepted parameters. Scalar and array OIDs are 1082 and 1182.
+	 * Convert `date` results to `Temporal.PlainDate`. Default `true`.
+	 * Set `false` to return PostgreSQL date text as a string.
+	 * Applies to `date[]` elements when `parseArrays` is enabled.
+	 *
+	 * When enabled, reading a row throws RangeError for `infinity`,
+	 * `-infinity`, BC dates, years above 9999, or dates outside Temporal's range.
+	 * These values remain readable as strings when conversion is disabled.
 	 */
 	temporalDate?: boolean
 	/**
-	 * Decode `timestamp` and `timestamp[]` as Temporal.PlainDateTime. Default `true`.
-	 * Set `false` to keep PostgreSQL text. Has the same date-format and range
-	 * limits as `temporalDate`; failures throw RangeError during row access.
-	 * Does not affect accepted parameters. Scalar and array OIDs are 1114 and 1115.
+	 * Convert `timestamp` results to `Temporal.PlainDateTime`. Default `true`.
+	 * Set `false` to return PostgreSQL timestamp text as a string.
+	 * Applies to `timestamp[]` elements when `parseArrays` is enabled.
+	 *
+	 * When enabled, reading a row throws RangeError for `infinity`,
+	 * `-infinity`, BC timestamps, years above 9999, or timestamps outside
+	 * Temporal's range. These values remain readable as strings when
+	 * conversion is disabled.
 	 */
 	temporalTimestamp?: boolean
 	/**
-	 * Decode `timestamptz` and `timestamptz[]` as Temporal.Instant. Default `true`.
-	 * Set `false` to keep PostgreSQL text, including the session's UTC offset.
-	 * Has the same date-format and range limits as `temporalDate`; failures
-	 * throw RangeError during row access. Does not affect accepted parameters.
-	 * Scalar and array OIDs are 1184 and 1185.
+	 * Convert `timestamptz` results to `Temporal.Instant`. Default `true`.
+	 * Set `false` to return PostgreSQL timestamp text as a string, including
+	 * the session's UTC offset. Applies to `timestamptz[]` elements when
+	 * `parseArrays` is enabled.
+	 *
+	 * When enabled, reading a row throws RangeError for `infinity`,
+	 * `-infinity`, BC timestamps, years above 9999, or timestamps outside
+	 * Temporal's range. These values remain readable as strings when
+	 * conversion is disabled.
 	 */
 	temporalTimestamptz?: boolean
 	/**
-	 * Decode `time` and `time[]` as Temporal.PlainTime. Default `false` keeps
-	 * strings. `24:00:00` throws RangeError during lazy row access; it is not
-	 * normalized to midnight. Does not affect `timetz` or parameter support.
-	 * Scalar and array type OIDs are 1083 and 1183.
+	 * Convert `time` results to `Temporal.PlainTime`. Default `false` returns
+	 * PostgreSQL time text as a string. Set `true` to enable conversion.
+	 * Applies to `time[]` elements when `parseArrays` is enabled.
+	 *
+	 * When enabled, PostgreSQL's valid end-of-day value `24:00:00` throws
+	 * RangeError when its row is read: Temporal.PlainTime cannot represent it.
+	 * It is not normalized to `00:00:00`. With conversion disabled, the value
+	 * remains the string `'24:00:00'`.
+	 * PostgreSQL can also round a valid near-midnight Temporal.PlainTime
+	 * parameter to `24:00:00`, causing the same failure when it is returned.
+	 * See {@linkcode Param} for parameter precision.
+	 *
+	 * Does not affect `timetz`, which remains a string.
 	 */
 	temporalTime?: boolean
 	/**
-	 * Decode `interval` and `interval[]` as Temporal.Duration. Default `false`
-	 * keeps strings. Mixed-sign components, infinities, malformed text, and values outside
-	 * Temporal's range throw RangeError during lazy row access.
+	 * Convert `interval` results to `Temporal.Duration`. Default `false` returns
+	 * PostgreSQL interval text as a string. Set `true` to enable conversion.
+	 * Applies to `interval[]` elements when `parseArrays` is enabled.
 	 *
-	 * Sets the PostgreSQL session's IntervalStyle to `iso_8601`, including after
-	 * pool reset. Changing it through SQL can break decoding and this setting
-	 * also affects interval-to-text casts. With the option disabled, IntervalStyle
-	 * is unchanged. Calendar months, days, and elapsed time stay separate; values
-	 * are not normalized or returned as strings on failure.
-	 * Does not affect parameter support; see {@linkcode Param} for precision.
-	 * Scalar and array type OIDs are 1186 and 1187.
+	 * When enabled, reading a row throws RangeError for mixed-sign components
+	 * such as `1 month -1 day`, `infinity`, `-infinity`, values outside
+	 * Temporal.Duration's range, or text the converter cannot parse. Components
+	 * are not normalized to make them representable; calendar months, days,
+	 * and elapsed time remain separate. With conversion disabled, these
+	 * values remain readable as PostgreSQL text.
+	 *
+	 * Enabling this option sets the session's IntervalStyle to `iso_8601`,
+	 * including after pool reset. Changing IntervalStyle through SQL can break
+	 * conversion. This setting also changes interval-to-text cast output.
+	 * With this option disabled, the client does not set IntervalStyle.
 	 */
 	temporalInterval?: boolean
 }
@@ -175,9 +218,11 @@ export class Client implements PreparedClient {
 	/**
 	 * Connect using the nonblocking poll protocol.
 	 *
-	 * Accepts a libpq keyword string, a PostgreSQL URI string, a URL, or
-	 * {@linkcode ConnectOptions}. An explicit argument bypasses `PGURL`;
-	 * unspecified fields still use libpq defaults. Nonempty URL query parameters
+	 * Accepts a libpq
+	 * {@link https://www.postgresql.org/docs/17/libpq-connect.html#LIBPQ-CONNSTRING | connection string},
+	 * a `URL` object, or {@linkcode ConnectOptions} with string values.
+	 * An explicit argument bypasses `PGURL`; unspecified fields still use libpq
+	 * defaults. Nonempty URL query parameters
 	 * override matching URL fields, including a socket path such as
 	 * `postgresql:///mydb?host=/var/run/postgresql&user=myuser`.
 	 *
@@ -193,12 +238,11 @@ export class Client implements PreparedClient {
 	 * conversion or lose floating-point precision. Options are captured at
 	 * invocation.
 	 *
-	 * @param conninfo A
+	 * @param conninfo A libpq
 	 * {@link https://www.postgresql.org/docs/17/libpq-connect.html#LIBPQ-CONNSTRING | connection string},
-	 * a
-	 * {@link https://www.postgresql.org/docs/17/libpq-connect.html#LIBPQ-CONNSTRING-URIS | URL},
-	 * or {@linkcode ConnectOptions}. Omit it to use `PGURL`, then libpq
-	 * `PG*` variables and defaults.
+	 * a `URL` object, or {@linkcode ConnectOptions} with string values.
+	 * Omit it or pass `undefined` to use `PGURL`, then libpq `PG*` variables
+	 * and defaults.
 	 * @param options Built-in result converter settings.
 	 * @returns Connected client. Caller must
 	 * {@linkcode Client.close} it or use `await using`.

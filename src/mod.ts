@@ -1,10 +1,10 @@
 /**
  * Deno native bindings for PostgreSQL libpq.
  *
- * A safe, fast PostgreSQL client built on libpq, with parameterized queries,
- * pooling, prepared statements, notifications and automatic resource disposal.
+ * A PostgreSQL client built on libpq, with parameterized queries,
+ * pooling, prepared statements, notifications, and automatic resource disposal.
  * Use {@linkcode Client} for one connection, {@linkcode Pool} for concurrent
- * commands and {@linkcode Notifier} for LISTEN/NOTIFY. The raw
+ * commands, and {@linkcode Notifier} for LISTEN/NOTIFY. The raw
  * {@link https://jsr.io/@carragom/deno-pg-ffi/doc/libpq/ | libpq entry point}
  * provides direct access to the exposed C functions.
  *
@@ -32,8 +32,8 @@
  * console.log(result.rows[0].greeting) // Hello, PostgreSQL
  * ```
  *
- * Set `PGURL` to select your database, then run the example with automatic
- * library loading:
+ * Pass connection settings to {@linkcode Client.connect} or set `PGURL` to
+ * select your database, then run the example with automatic library loading:
  *
  * ```bash
  * deno run -A example.ts
@@ -42,22 +42,21 @@
  * To use an installed libpq instead, set `DENO_LIBPQ_PATH`:
  *
  * ```bash
- * DENO_LIBPQ_PATH=/path/to/libpq.so deno run --allow-ffi --allow-env example.ts
+ * DENO_LIBPQ_PATH=/path/to/libpq.so deno run -A example.ts
  * ```
  *
  * ## Connections and resource disposal
  *
- * {@linkcode Client.connect}, {@linkcode Pool.create} and
+ * {@linkcode Client.connect}, {@linkcode Pool.create}, and
  * {@linkcode Notifier.connect} accept a
  * {@link https://www.postgresql.org/docs/17/libpq-connect.html#LIBPQ-CONNSTRING | connection string},
- * {@link https://www.postgresql.org/docs/17/libpq-connect.html#LIBPQ-CONNSTRING-URIS | URL}
- * or {@linkcode ConnectOptions} with string values. Without an argument, they
+ * a `URL` object, or {@linkcode ConnectOptions} with string values. Without an argument, they
  * use `PGURL` if defined or libpq's defaults. An explicit argument
  * bypasses `PGURL`. See {@linkcode Client.connect} for connection timeouts.
  *
  * Dispose every successful query or exec result, even when its rows are ignored.
  * Results support `using` or `await using`. Connections, pools, checkouts,
- * statements and notifiers support `await using`. Explicit `close()` is also
+ * statements, and notifiers support `await using`. Explicit `close()` is also
  * available; await it for those asynchronous resources. Dispose statements
  * before their connection or checkout and checkouts before their pool.
  *
@@ -113,7 +112,7 @@
  * after disposal throws, but row objects already obtained remain usable, even
  * after their connection closes or is released. SQL errors reject the command
  * with {@linkcode PostgresError}; conversion errors throw when the affected row
- * is first read. See {@linkcode Result} for counts, metadata and disposal.
+ * is first read. See {@linkcode Result} for counts, metadata, and disposal.
  *
  * ## Pooling
  *
@@ -135,7 +134,7 @@
  *
  * {@linkcode Pool.query} and {@linkcode Pool.exec} reset and release their
  * connection after each command. Results remain readable until disposed.
- * Session settings, temporary tables, prepared statements and uncommitted
+ * Session settings, temporary tables, prepared statements, and uncommitted
  * transactions do not survive release.
  *
  * Use {@linkcode Pool.acquire} to keep one checkout for a transaction or
@@ -178,7 +177,7 @@
  *
  * {@linkcode Param} lists the JavaScript values you can pass as parameters.
  * The client sends each non-null value as text. PostgreSQL interprets that text
- * using the type required by the query: for example, `$1::int4` accepts either
+ * using the type required by the query. For example, `$1::int4` accepts either
  * the number `42` or the string `'42'`. You can also pass a string for a type
  * without a built-in parameter converter, provided it uses that type's
  * PostgreSQL input format.
@@ -190,10 +189,11 @@
  * Returned values are converted according to the column's PostgreSQL type,
  * independently of the JavaScript value you sent. For example, `int4` results
  * become numbers and `int8` results become bigints. Types without a result
- * converter remain strings. The table below shows the built-in parameter and
- * result conversions:
+ * converter remain strings. The table below shows common parameter forms and
+ * built-in result conversions. PostgreSQL-formatted strings can also be sent
+ * for any of these types:
  *
- * | PostgreSQL type | Parameter value | Received value |
+ * | PostgreSQL type | Common parameter form | Received value |
  * | --- | --- | --- |
  * | SQL NULL | `null` | `null` |
  * | bool | `boolean` | `boolean` |
@@ -201,48 +201,86 @@
  * | int2 / int4 / float4 / float8 | `number` | `number` |
  * | int8 | `bigint` | `bigint` |
  * | numeric | `string` | `string` |
- * | json / jsonb | {@linkcode json | json()} | Parsed JSON, or opt-out `string` |
+ * | json / jsonb | {@linkcode json | json()} | Parsed JSON value or `string` when {@linkcode ClientOptions.parseJson} is false |
  * | text / varchar / unknown scalar | `string` | `string` |
- * | date | `Temporal.PlainDate` | `Temporal.PlainDate`, or opt-out `string` |
- * | timestamp | `Temporal.PlainDateTime` | `Temporal.PlainDateTime`, or opt-out `string` |
- * | timestamptz | `Temporal.Instant` | `Temporal.Instant`, or opt-out `string` |
- * | time | `Temporal.PlainTime` | `string`, or opt-in `Temporal.PlainTime` |
- * | interval | `Temporal.Duration` | `string`, or opt-in `Temporal.Duration` |
+ * | date | `Temporal.PlainDate` | `Temporal.PlainDate` or `string` when {@linkcode ClientOptions.temporalDate} is false |
+ * | timestamp | `Temporal.PlainDateTime` | `Temporal.PlainDateTime` or `string` when {@linkcode ClientOptions.temporalTimestamp} is false |
+ * | timestamptz | `Temporal.Instant` | `Temporal.Instant` or `string` when {@linkcode ClientOptions.temporalTimestamptz} is false |
+ * | time | `Temporal.PlainTime` | `string` or `Temporal.PlainTime` when {@linkcode ClientOptions.temporalTime} is true |
+ * | interval | `Temporal.Duration` | `string` or `Temporal.Duration` when {@linkcode ClientOptions.temporalInterval} is true |
  * | timetz | `string` | `string` |
- * | Built-in array | {@linkcode array | array()} | Nested arrays, or opt-out PostgreSQL text |
+ * | Built-in array | {@linkcode array | array()} | Nested arrays, or `string` when {@linkcode ClientOptions.parseArrays} is false |
  * | Unregistered custom array | Array text | `string` |
  *
- * Parsed arrays preserve nesting and SQL NULL leaves; lower bounds are
- * discarded. Receive parsing honors type delimiters, including semicolons for
- * `box[]`. {@linkcode array} writes comma-delimited text, so arrays using another
- * delimiter require manually formatted parameters.
+ * ### Array and element conversion
  *
- * ### JSON and array conversion options
+ * Array results are converted in two steps: the array converter reads the
+ * PostgreSQL array structure, then the scalar result converter for its element
+ * type converts each non-NULL element. This applies to all supported element
+ * types, including numbers, JSON, and Temporal values. SQL NULL elements become
+ * JavaScript `null` without calling a scalar converter.
  *
- * Set `parseJson: false` in {@linkcode ClientOptions} or {@linkcode PoolOptions}
- * to receive JSON/JSONB as PostgreSQL text instead of using `JSON.parse`.
- * This preserves number precision and distinguishes JSON null (`'null'`)
- * from SQL NULL (`null`). JSONB text still reflects PostgreSQL's normalization,
- * not the original input's whitespace, key order, or duplicate keys.
+ * {@linkcode ClientOptions.parseArrays} defaults to `true`. Scalar conversion options then apply equally
+ * to individual columns and array elements. For example:
  *
- * Set `parseArrays: false` to receive whole PostgreSQL arrays as text,
- * preserving lower bounds and skipping element converters. These options
- * are independent: disabling JSON parsing alone leaves parsed JSON/JSONB
- * arrays with JSON text elements. Neither option changes parameters.
+ * | PostgreSQL array type | Default JavaScript elements | With a scalar option changed |
+ * | --- | --- | --- |
+ * | int4[] | Numbers | No built-in opt-out option |
+ * | json[] / jsonb[] | Values from `JSON.parse` | JSON strings with `parseJson: false` |
+ * | date[] | `Temporal.PlainDate` | Date strings with `temporalDate: false` |
+ * | timestamp[] / timestamptz[] | Temporal values | Strings with the corresponding Temporal option set to `false` |
+ * | time[] / interval[] | Strings | Temporal values with `temporalTime: true` / `temporalInterval: true` |
+ *
+ * Disabling a scalar converter leaves the JavaScript array intact; only its
+ * elements change. This example keeps integer elements as numbers while
+ * returning date and JSON elements as strings:
  *
  * ```ts
  * import { Client } from '@carragom/deno-pg-ffi'
  *
  * await using db = await Client.connect(undefined, {
+ * 	temporalDate: false,
  * 	parseJson: false,
- * 	parseArrays: false,
  * })
- * await using result = await db.query<{ document: string; values: string }>(
- * 	`SELECT '{"n":9007199254740993}'::jsonb AS document,
- * 	'[5:6]={1,2}'::int4[] AS values`,
+ * await using result = await db.query<{
+ * 	numbers: number[]
+ * 	dates: string[]
+ * 	documents: string[]
+ * }>(`SELECT ARRAY[1, 2]::int4[] AS numbers,
+ * 	ARRAY[date '2026-01-02'] AS dates,
+ * 	ARRAY['{"n":1}'::jsonb] AS documents`)
+ * console.log(result.rows[0].numbers) // [1, 2]
+ * console.log(result.rows[0].dates) // ['2026-01-02']
+ * console.log(result.rows[0].documents) // ['{"n": 1}']
+ * ```
+ *
+ * Set `parseArrays: false` to skip both steps for built-in arrays and receive
+ * each entire array as one PostgreSQL text string. For example,
+ * `'[5:6]={1,2}'::int4[]` returns `'[5:6]={1,2}'` instead of `[1, 2]`, retaining
+ * the original index bounds. Scalar options still apply to non-array columns.
+ * Custom array registrations can enable parsing for individual types; see
+ * **Custom result converters** below.
+ *
+ * These options are available in {@linkcode ClientOptions} and
+ * {@linkcode PoolOptions}. They affect query results only; parameter conversion
+ * is unchanged.
+ *
+ * ### JSON conversion options
+ *
+ * Set `parseJson: false` to receive JSON/JSONB as PostgreSQL text instead of
+ * using `JSON.parse`. This preserves number precision and distinguishes JSON
+ * null (`'null'`) from SQL NULL (`null`). JSONB text still reflects PostgreSQL's
+ * normalization, not the original input's whitespace, key order, or duplicate
+ * keys.
+ *
+ * ```ts
+ * import { Client } from '@carragom/deno-pg-ffi'
+ *
+ * await using db = await Client.connect(undefined, { parseJson: false })
+ * await using result = await db.query<{ document: string }>(
+ * 	`SELECT '{"n":9007199254740993}'::jsonb AS document`,
  * )
  * console.log(result.rows[0].document) // {"n": 9007199254740993}
- * console.log(result.rows[0].values) // [5:6]={1,2}
  * ```
  *
  * With JSON parsing enabled, large integers and precise decimals can lose
@@ -340,11 +378,11 @@
  *
  * Other platforms require a compatible local library. See the
  * {@link https://github.com/carragom/deno-pg-ffi/blob/main/DEVEL.md#artifact-compatibility | development guide}
- * for artifact filenames, distribution examples and building libpq locally.
+ * for artifact filenames, distribution examples, and building libpq locally.
  *
  * `--allow-env` covers loader settings and `PGURL`; downloads also need
- * `--allow-net`, `--allow-read` and `--allow-write` for the library cache.
- * libpq itself reads `PG*` variables, `.pgpass` and connection files and opens
+ * `--allow-net`, `--allow-read`, and `--allow-write` for the library cache.
+ * libpq itself reads `PG*` variables, `.pgpass`, and connection files and opens
  * database sockets through FFI, outside Deno's file/network permission checks.
  *
  * ## Errors
@@ -366,7 +404,7 @@
  * ## Raw libpq API
  *
  * The raw `@carragom/deno-pg-ffi/libpq` entry point retains C return codes,
- * NULL pointers and caller-managed memory. Its supported functions are
+ * NULL pointers, and caller-managed memory. Its supported functions are
  * exposed as named `PQ*` exports; COPY streaming and pipeline functions are not
  * currently exposed. See the
  * {@link https://jsr.io/@carragom/deno-pg-ffi/doc/libpq/ | raw entry point}

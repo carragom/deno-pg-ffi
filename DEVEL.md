@@ -228,7 +228,7 @@ baselines, or `node_modules/`. The package intentionally has `lock: false`.
 | `src/mod.ts`       | Managed public API                                                     |
 | `src/libpq.ts`     | Raw public named `PQ*` functions, C enums, and pointer types           |
 | `src/client/`      | Client, pool, statements, results, SQL errors, and notifier            |
-| `src/protocol/`    | Poll handshake, socket waits, command flushing and result collection   |
+| `src/protocol/`    | Poll handshake, socket waits, command flushing, and result collection  |
 | `src/codecs/`      | Parameter text, array parsing/quoting, and OID registry                |
 | `src/native/`      | FFI types/symbols/loading, strings, wrappers, threads, platform naming |
 | `src/conninfo.ts`  | Connection types, URL parsing, conninfo resolution                     |
