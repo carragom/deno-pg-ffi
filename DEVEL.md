@@ -261,16 +261,18 @@ then restores converter session settings. Combining reset SQL would put
 connections and retained results, so overrides affect unread rows, while
 materialized rows stay cached.
 
-Result converters depend on `DateStyle = 'ISO, YMD'` and, when enabled,
-`IntervalStyle = iso_8601`. PostgreSQL interval fields have independent signs;
-keep calendar months/days separate from elapsed time and preserve signed
-fractions. Unsupported values throw during lazy row access when their Temporal
-converter is enabled. Date/timestamp/timestamptz converters default to enabled
-and can be independently disabled to preserve PostgreSQL text, including array
-leaves. Registries capture these options at creation and retain them across pool
-reset; explicit custom converters take precedence. Result converter details and
-user options are documented on the managed API; converter tests live beside
-their implementations.
+Result converters depend on `DateStyle = 'ISO, YMD'`, `extra_float_digits = 3`,
+and, when enabled, `IntervalStyle = iso_8601`. Connect and pool reset enforce
+these settings; the float setting preserves text-protocol precision even on
+PostgreSQL 10–11. PostgreSQL interval fields have independent signs; keep
+calendar months/days separate from elapsed time and preserve signed fractions.
+Unsupported values throw during lazy row access when their Temporal converter is
+enabled. Date/timestamp/timestamptz converters default to enabled and can be
+independently disabled to preserve PostgreSQL text, including array leaves.
+Registries capture these options at creation and retain them across pool reset;
+explicit custom converters take precedence. Result converter details and user
+options are documented on the managed API; converter tests live beside their
+implementations.
 
 Float4 results round parsed text with `Math.fround` to reconstruct the stored
 32-bit value in a JavaScript number, including array leaves. Float8 and integer

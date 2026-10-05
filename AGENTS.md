@@ -32,9 +32,10 @@ truth for exports, tasks, formatting, and linting. The package requires Deno
   command waits are unlimited.
 - Pool creation opens no socket. Commands checkout, reset, and release. Reset
   rolls back an open/failed transaction, sends `DISCARD ALL` separately, and
-  restores required DateStyle/optional IntervalStyle settings. Reset failure
-  finishes the connection. Pool shutdown rejects new/queued work and waits for
-  pending connects, checkouts, resets, and finishes.
+  restores required DateStyle/extra_float_digits and optional IntervalStyle
+  settings. Reset failure finishes the connection. Pool shutdown rejects
+  new/queued work and waits for pending connects, checkouts, resets, and
+  finishes.
 - Statements bind to their preparing connection. Unnamed prepare overwrites;
   unnamed disposal must not deallocate other statements. Named disposal uses
   `DEALLOCATE`. `Notifier` owns its own connection; it is the root listen API.

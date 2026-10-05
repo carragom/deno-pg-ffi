@@ -299,8 +299,10 @@
  * `float8` results use `Number(text)`. `float4` results use
  * `Math.fround(Number(text))` to reconstruct the stored 32-bit value as a
  * JavaScript number. This also applies to parsed `float4[]` elements.
- * With PostgreSQL's default precise output, both retain their stored
- * floating-point values. For example, a float4 stored from `0.1` is returned
+ * Managed connections set `extra_float_digits = 3` and restore it after pool
+ * reset so PostgreSQL sends enough digits to retain stored floating-point
+ * values, including on PostgreSQL 10–11. Lowering this setting can lose
+ * precision. For example, a float4 stored from `0.1` is returned
  * as `0.10000000149011612`, its exact 32-bit value represented in JavaScript.
  *
  * PostgreSQL floating-point `Infinity`, `-Infinity`, and `NaN` map to the same

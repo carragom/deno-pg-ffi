@@ -9,8 +9,8 @@ import type { ConnectOptions } from '../conninfo.ts'
 /**
  * A connection checked out from a pool. {@linkcode PoolClient.close} / `await using` releases the
  * inner {@linkcode Client} after `DISCARD ALL` and restoring
- * `DateStyle` and, when enabled, Temporal interval formatting. It does not
- * call `PQfinish` on a reusable connection.
+ * `DateStyle`, `extra_float_digits = 3`, and, when enabled, Temporal interval
+ * formatting. It does not call `PQfinish` on a reusable connection.
  *
  * Use {@linkcode Pool.acquire} for session-scoped work. One command can be active
  * on a checkout at a time; calls after release reject. Dispose statements before
@@ -82,8 +82,8 @@ export class PoolClient implements PreparedClient {
 	/**
 	 * Wait for the active command, reset the session, and release this checkout.
 	 * Open/failed transactions are rolled back before DISCARD ALL and restoring
-	 * DateStyle and the enabled Temporal interval formatting. Reset failure
-	 * finishes the connection. Repeated calls are safe.
+	 * DateStyle, `extra_float_digits = 3`, and the enabled Temporal interval
+	 * formatting. Reset failure finishes the connection. Repeated calls are safe.
 	 * Session settings, temporary tables, and prepared statements do not survive
 	 * release. Existing results remain readable and require separate disposal.
 	 */

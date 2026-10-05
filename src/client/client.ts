@@ -32,6 +32,7 @@ import { Result, Results } from './result.ts'
 import { type PreparedClient, Statement } from './statement.ts'
 
 const DATE_STYLE_SQL = "SET DateStyle = 'ISO, YMD'"
+const FLOAT_DIGITS_SQL = 'SET extra_float_digits = 3'
 const INTERVAL_STYLE_SQL = 'SET IntervalStyle = iso_8601'
 
 /**
@@ -185,9 +186,12 @@ export class Client implements PreparedClient {
 	 * means no deadline. Commands have no client-side timeout or AbortSignal
 	 * option; use PostgreSQL's `statement_timeout` to limit SQL execution.
 	 *
-	 * Sets DateStyle to `ISO, YMD` after connecting. Options are captured at
-	 * invocation. Changing DateStyle through SQL can break date/timestamp
-	 * decoding; enabling temporalInterval also requires IntervalStyle `iso_8601`.
+	 * Sets DateStyle to `ISO, YMD` and extra_float_digits to `3` after connecting,
+	 * overriding connection defaults to preserve temporal formats and float
+	 * precision across PostgreSQL versions. Enabling temporalInterval also sets
+	 * IntervalStyle to `iso_8601`. Changing these settings through SQL can break
+	 * conversion or lose floating-point precision. Options are captured at
+	 * invocation.
 	 *
 	 * @param conninfo A
 	 * {@link https://www.postgresql.org/docs/17/libpq-connect.html#LIBPQ-CONNSTRING | connection string},
@@ -195,7 +199,7 @@ export class Client implements PreparedClient {
 	 * {@link https://www.postgresql.org/docs/17/libpq-connect.html#LIBPQ-CONNSTRING-URIS | URL},
 	 * or {@linkcode ConnectOptions}. Omit it to use `PGURL`, then libpq
 	 * `PG*` variables and defaults.
-	 * @param options Opt-in Temporal time/interval decoding.
+	 * @param options Built-in result converter settings.
 	 * @returns Connected client. Caller must
 	 * {@linkcode Client.close} it or use `await using`.
 	 * @throws {Error} When the connection cannot be established or times out
@@ -249,7 +253,7 @@ export class Client implements PreparedClient {
 		const conn = await connectPollLoop(conninfo)
 		const client = new Client(conn, types, temporalInterval)
 		try {
-			await client.#setSessionStyles()
+			await client.#setSessionSettings()
 			return client
 		} catch (error) {
 			await client.close()
@@ -570,8 +574,8 @@ export class Client implements PreparedClient {
 
 		const commands = txn === PGTransactionStatusType.PQTRANS_INTRANS ||
 				txn === PGTransactionStatusType.PQTRANS_INERROR
-			? ['ROLLBACK', 'DISCARD ALL', DATE_STYLE_SQL]
-			: ['DISCARD ALL', DATE_STYLE_SQL]
+			? ['ROLLBACK', 'DISCARD ALL', DATE_STYLE_SQL, FLOAT_DIGITS_SQL]
+			: ['DISCARD ALL', DATE_STYLE_SQL, FLOAT_DIGITS_SQL]
 		if (this.#temporalInterval) {
 			commands.push(INTERVAL_STYLE_SQL)
 		}
@@ -629,8 +633,9 @@ export class Client implements PreparedClient {
 		}
 	}
 
-	async #setSessionStyles(): Promise<void> {
+	async #setSessionSettings(): Promise<void> {
 		await this.#command(DATE_STYLE_SQL)
+		await this.#command(FLOAT_DIGITS_SQL)
 		if (this.#temporalInterval) {
 			await this.#command(INTERVAL_STYLE_SQL)
 		}

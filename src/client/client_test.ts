@@ -950,7 +950,14 @@ Deno.test('Client JSON and array options preserve text independently without cha
 })
 
 Deno.test('Client float4 scalars and arrays match PostgreSQL float8 promotion', async () => {
-	await using db = await Client.connect()
+	await using db = await Client.connect({
+		...conninfoParamsFromUrl(new URL(getPGURL())),
+		options: '-c extra_float_digits=0',
+	})
+	await using settings = await db.query<{ digits: number }>(
+		"SELECT current_setting('extra_float_digits')::int4 AS digits",
+	)
+	assertEquals(settings.rows[0].digits, 3)
 	await using result = await db.query<{
 		value: number
 		promoted: number

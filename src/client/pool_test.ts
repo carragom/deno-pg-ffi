@@ -387,25 +387,38 @@ Deno.test('Pool checkout transactions are rolled back on the same backend', asyn
 	}
 })
 
-Deno.test('Pool checkout resets session settings and restores DateStyle', async () => {
-	await using pool = await Pool.create(undefined, { max: 1 })
+Deno.test('Pool checkout resets session settings and restores converter formatting', async () => {
+	await using pool = await Pool.create({
+		...conninfoParamsFromUrl(new URL(getPGURL())),
+		options: '-c extra_float_digits=0',
+	}, { max: 1 })
 	await using before = await pool.query<{ pid: number; app: string }>(
 		"SELECT pg_backend_pid()::int4 AS pid, current_setting('application_name') AS app",
 	)
 	{
 		await using db = await pool.acquire()
 		await using _settings = await db.exec(
-			"SET application_name = 'pool_reset_probe'; SET DateStyle = 'SQL, DMY'",
+			"SET application_name = 'pool_reset_probe'; SET DateStyle = 'SQL, DMY'; SET extra_float_digits = 0",
 		)
 	}
 	await using after = await pool.query<
-		{ pid: number; app: string; style: string }
+		{
+			pid: number
+			app: string
+			style: string
+			digits: number
+			value: number
+			promoted: number
+		}
 	>(
-		"SELECT pg_backend_pid()::int4 AS pid, current_setting('application_name') AS app, current_setting('DateStyle') AS style",
+		"SELECT pg_backend_pid()::int4 AS pid, current_setting('application_name') AS app, current_setting('DateStyle') AS style, current_setting('extra_float_digits')::int4 AS digits, 0.1::float4 AS value, (0.1::float4)::float8 AS promoted",
 	)
 	assertEquals(after.rows[0].pid, before.rows[0].pid)
 	assertEquals(after.rows[0].app, before.rows[0].app)
 	assertEquals(after.rows[0].style, 'ISO, YMD')
+	assertEquals(after.rows[0].digits, 3)
+	assertEquals(after.rows[0].value, 0.10000000149011612)
+	assertEquals(after.rows[0].promoted, after.rows[0].value)
 })
 
 Deno.test('Pool Temporal options apply to simultaneous connections and survive reset', async () => {
